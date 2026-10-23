@@ -70,7 +70,7 @@ C:, and an installer that survives a blocked git protocol.
 
 ### Prerequisites
 
-- Windows 10/11 with AutoCAD 2027 (or 2026) and/or SolidWorks 2026 installed and licensed
+- Windows 10/11 with AutoCAD and/or SolidWorks installed
 - Python ≥ 3.11 on PATH (`python --version`)
 - dsh (DeepSeek Harness) or Codex CLI
 - Git — optional; the installer falls back to a codeload zip when git is blocked
@@ -81,6 +81,18 @@ Get the repository first:
 git clone https://github.com/27painter/dsh-sw-cad.git
 cd dsh-sw-cad
 ```
+
+### Version support
+
+Upstream verifies against a single release but writes for a range. The honest picture:
+
+| CAD | Verified | Expected to work | Why |
+|---|---|---|---|
+| AutoCAD | 2026 (every COM path, live run), 2027 (API compatible) | 2025 / 2024 / 2023 | COM goes through the long-stable ActiveX API. Run the upstream `scripts\smoke_*_com.py` against your build to confirm. And if COM cannot do something on your version, the ezdxf backend still can — it needs no AutoCAD at all. |
+| SolidWorks | 2026 SP4.1 (upstream's acceptance target) | 2025 / 2024 / 2023 | The code carries explicit SW2024 fixes (Chinese edition: selecting a sketch by name, `AddComponent4` returning `None`), and upstream's contributor guide asks for 2020–2025 compatibility. 2023 has not been exercised. |
+
+Older versions are not refused — nothing checks a version number. They are simply outside what upstream
+verified, so start with one small job and look at the result before trusting a full drawing.
 
 ### Route A — install upstream directly, then register it
 
@@ -235,8 +247,8 @@ junctions point both at the data drive; neither tool notices. Deleting a junctio
 **4. Scope the file access.** The AutoCAD server's `ALLOWED_PATHS` is empty by default, and its own README
 says to set it. This kit sets it to a working directory.
 
-**5. Know what is verified.** AutoCAD COM was verified on 2026; 2027's ActiveX API is compatible but run
-the upstream smoke scripts first. SolidWorks was verified upstream on 2026 SP4.1.
+**5. Know what is verified.** The version table under Install says it plainly: upstream verified AutoCAD
+2026 and SolidWorks 2026 SP4.1. Everything else is expected, not proven — run one small job first.
 
 ## Troubleshooting
 

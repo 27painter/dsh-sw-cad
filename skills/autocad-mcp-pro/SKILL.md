@@ -1,16 +1,16 @@
 ---
 name: autocad-mcp-pro
-description: "AutoCAD 2027 制图自动化技能。当任务涉及绘制或修改 DWG/DXF 图纸、机械制图（尺寸标注/图框/标题栏/明细表/紧固件/齿轮/键槽）、建筑平面图（墙/门/窗/面积）、P&ID 工艺图、读取分析现有图纸（算量/提取明细表/版本比对）、或导出 PDF/PNG 时使用。通过 autocad MCP 工具按需检索执行，所有交付必须复核。触发词：AutoCAD、DWG、DXF、CAD、画图、出图、图层、标注、图框、标题栏、明细表、机械制图、批量改图。"
+description: "AutoCAD 制图自动化技能（2026/2027 已验证，2023–2025 预期可用）。当任务涉及绘制或修改 DWG/DXF 图纸、机械制图（尺寸标注/图框/标题栏/明细表/紧固件/齿轮/键槽）、建筑平面图（墙/门/窗/面积）、P&ID 工艺图、读取分析现有图纸（算量/提取明细表/版本比对）、或导出 PDF/PNG 时使用。通过 autocad MCP 工具按需检索执行，所有交付必须复核。触发词：AutoCAD、DWG、DXF、CAD、画图、出图、图层、标注、图框、标题栏、明细表、机械制图、批量改图。"
 metadata: { "os": ["win32"], "requires": { "anyBins": ["python", "py"], "pythonPackages": ["pywin32", "ezdxf"] } }
 ---
 
 # AutoCAD 自动化技能（autocad-mcp-pro）
 
-通过 MCP 工具操控本机 AutoCAD 2027。工具不预加载：服务器处于 **discovery 模式**，会话中只有 `search_tools` 和 `call_tool` 两个元工具（空闲约 356 token），完整 242 工具目录按需检索。
+通过 MCP 工具操控本机 AutoCAD（2026/2027 已验证，2023–2025 预期可用）。工具不预加载：服务器处于 **discovery 模式**，会话中只有 `search_tools` 和 `call_tool` 两个元工具（空闲约 356 token），完整 242 工具目录按需检索。
 
 ## 环境预检（每次任务开始）
 
-1. **AutoCAD 2027 是否已运行**：COM 实控需要。没开就提示用户启动，或降级 ezdxf 无头引擎（仅 DXF，无渲染）并在结果中注明。
+1. **AutoCAD 是否已运行**：COM 实控需要。没开就提示用户启动，或降级 ezdxf 无头引擎（仅 DXF，无渲染）并在结果中注明。
 2. **权限一致**：dsh/Codex 必须与 AutoCAD 同用户、同完整性级别启动。
 3. **工作目录**：输出放在 `D:\AutoCad`（ALLOWED_PATHS 白名单）内。
 4. 可用 `system_about` 确认运行时后端与版本；`system_capabilities` 查当前工具集。
@@ -61,7 +61,7 @@ metadata: { "os": ["win32"], "requires": { "anyBins": ["python", "py"], "pythonP
 3. pywin32 类型库缓存会导致所有实体返回裸 `IAcadEntity`（无线端点）→ 重启 MCP 服务器。
 4. WIPEOUT、MTEXT 背景色在 AutoCAD 2026 实测缺失 → 此类需求走无头引擎。
 5. 无头 CHSPACE 仅限顶视未扭曲视口；尺寸/ACIS/代理实体/表格会被拒绝。
-6. 版本说明：COM 路径在 **AutoCAD 2026 真机验证**；2027 的 ActiveX API 兼容，首次使用先跑服务器仓库的 `scripts\smoke_*_com.py` 确认。
+6. 版本说明：COM 路径在 **AutoCAD 2026 真机验证**，2027 的 ActiveX API 兼容；2025/2024/2023 走同一套 ActiveX 接口，预期可用但未验证——首次使用先跑服务器仓库的 `scripts\smoke_*_com.py` 确认。ezdxf 无头后端与 CAD 版本无关（不需要 AutoCAD）。
 
 ## 边界
 

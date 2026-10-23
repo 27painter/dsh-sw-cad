@@ -66,7 +66,7 @@ discovery 模式配置、按需 Skill 接线、把几个 G 的依赖挡在 C 盘
 
 ### 前置条件
 
-- Windows 10/11，已安装并授权的 AutoCAD 2027（或 2026）和/或 SolidWorks 2026
+- Windows 10/11，已安装 AutoCAD 和/或 SolidWorks
 - PATH 里有 Python ≥ 3.11（`python --version`）
 - dsh（DeepSeek Harness）或 Codex CLI
 - Git —— 可选；git 被拦时安装器会自动降级为 codeload zip 下载
@@ -77,6 +77,17 @@ discovery 模式配置、按需 Skill 接线、把几个 G 的依赖挡在 C 盘
 git clone https://github.com/27painter/dsh-sw-cad.git
 cd dsh-sw-cad
 ```
+
+### 版本支持
+
+上游都是"按一个版本验收、按一个区间写代码"，实际情况是：
+
+| CAD | 已验证 | 预期可用 | 依据 |
+|---|---|---|---|
+| AutoCAD | 2026（所有 COM 路径真机跑过）、2027（API 兼容） | 2025 / 2024 / 2023 | COM 走的是长期稳定的 ActiveX 接口。想确认你的版本，跑上游的 `scripts\smoke_*_com.py`。另外某个功能在你这版 COM 上做不了时，ezdxf 后端照样能做——它根本不需要 AutoCAD。 |
+| SolidWorks | 2026 SP4.1（上游验收目标） | 2025 / 2024 / 2023 | 代码里带明确的 SW2024 修复（中文版按名称选草图、`AddComponent4` 返回 `None`），上游贡献指南要求 2020–2025 兼容。2023 没有实际跑过。 |
+
+老版本不会被拒绝——代码里没有任何版本号检查。它们只是不在上游的验证范围内，所以**先拿一个小任务试，看过结果再信任整张图**。
 
 ### 路线 A —— 按上游原始方式安装，再注册
 
@@ -224,8 +235,8 @@ v1.30.0）；discovery 模式只广告两个元工具，且能按关键词检索
 **4. 把文件访问圈起来。** AutoCAD 服务器的 `ALLOWED_PATHS` 默认是空的，它自己的 README 也要求你设置。
 本配置包把它设为一个工作目录。
 
-**5. 分清什么验证过。** AutoCAD COM 在 2026 上真机验证；2027 的 ActiveX API 兼容，但建议先跑上游的 smoke
-脚本。SolidWorks 由上游在 2026 SP4.1 上验证。
+**5. 分清什么验证过。** 安装章节的版本表写得很直白：上游验证过 AutoCAD 2026 和 SolidWorks 2026 SP4.1，
+其余都是"预期"而非"已证明"——先拿小任务试。
 
 ## 排障
 
