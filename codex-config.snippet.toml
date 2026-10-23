@@ -1,0 +1,23 @@
+# ============================================================
+# dsh-sw-cad -- Codex config.toml snippet
+# Paths assume the default install root D:\cad-agents; adjust if you used -BaseDir.
+# Append this to ~/.codex/config.toml, then verify with: codex mcp list
+# Companion skills (on-demand): junction them into ~/.codex/skills/
+#   solidworks-automation, autocad-mcp-pro
+# ============================================================
+
+[mcp_servers.autocad]
+command = "D:\\cad-agents\\venv-autocad\\Scripts\\autocad-mcp.exe"
+startup_timeout_sec = 30
+
+[mcp_servers.autocad.env]
+AUTOCAD_MCP_BACKEND = "auto"
+TOOL_PROFILE = "full"
+TOOL_PACKS = "all"
+DISCOVERY_MODE = "search"
+ALLOWED_PATHS = "D:\\AutoCad"
+
+[mcp_servers.solidworks]
+command = "D:\\cad-agents\\venv-solidworks\\Scripts\\python.exe"
+args = ["D:\\cad-agents\\dsh-skills\\solidworks-automation\\mcp-server\\server.py"]
+startup_timeout_sec = 30

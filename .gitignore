@@ -1,0 +1,8 @@
+# Backups created by install.ps1
+*.bak-*
+
+# Local scratch
+*.log
+*.tmp
+Thumbs.db
+.DS_Store

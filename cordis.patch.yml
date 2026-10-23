@@ -1,0 +1,48 @@
+# dsh-sw-cad -- copy into ~/.dsh/cordis.patch.yml, or let install.ps1 write it for you.
+# Two MCP servers: autocad (discovery mode) and solidworks (66-tool catalog).
+# Paths assume the default install root D:\cad-agents; change them if you used -BaseDir.
+- insert:
+    - id: mcp-autocad
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: autocad
+        transport: stdio
+        command: 'D:\cad-agents\venv-autocad\Scripts\autocad-mcp.exe'
+        args: []
+        env:
+          # auto: COM when AutoCAD is running, ezdxf headless otherwise
+          AUTOCAD_MCP_BACKEND: auto
+          # keep full/all: in discovery mode the catalog costs nothing at idle,
+          # narrowing it only hides tools (lean+core,mech drops gear_draw_*)
+          TOOL_PROFILE: full
+          TOOL_PACKS: 'all'
+          # 2 meta-tools advertised (~356 tokens); 242 tools searched on demand
+          DISCOVERY_MODE: search
+          # scope file access; the upstream default is unscoped
+          ALLOWED_PATHS: 'D:\AutoCad'
+        # COM save/export/render can be slow
+        toolCallTimeoutMs: 180000
+        failOnStartupError: false
+        reconnect:
+          enabled: true
+          initialDelayMs: 500
+          maxDelayMs: 30000
+          maxAttempts: 10
+- insert:
+    - id: mcp-solidworks
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: solidworks
+        transport: stdio
+        command: 'D:\cad-agents\venv-solidworks\Scripts\python.exe'
+        args:
+          - 'D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py'
+        env: {}
+        # model rebuilds are slow; give them time
+        toolCallTimeoutMs: 300000
+        failOnStartupError: false
+        reconnect:
+          enabled: true
+          initialDelayMs: 500
+          maxDelayMs: 30000
+          maxAttempts: 10
