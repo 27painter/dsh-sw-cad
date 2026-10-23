@@ -38,6 +38,14 @@ Two MCP servers are the muscle, registered in the client config:
 | `autocad` | 2 | ~356 tokens | Upstream `DISCOVERY_MODE=search`: only `search_tools` + `call_tool`; the 242-tool catalog is searched by keyword |
 | `solidworks` | 2 | 256 tokens | `mcp-shim/` from this repository in front of upstream's 66-tool server (50 `solidworks_*` + 14 `cadstudio_*` + 2 `design_*`), which would otherwise cost 23,404 |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/token-cost-dark.svg">
+  <img alt="Bar chart of idle context cost: AutoCAD direct 83,717 tokens, SolidWorks direct 23,404, both together 107,121, this kit 612" src="docs/token-cost-light.svg">
+</picture>
+
+*Tool schemas are paid for before the first request. Connected directly the two servers cost 107,121
+tokens; through this kit they cost 612, a 99.4% cut. Reproduce with `mcp-shim/verify_shim.py`.*
+
 ```
 you speak natural language
    │

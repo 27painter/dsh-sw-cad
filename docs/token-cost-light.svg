@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 298" width="900" height="298" role="img" aria-labelledby="t d" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+<title id="t">Idle context cost of the two CAD MCP tool catalogues</title>
+<desc id="d">AutoCAD alone 83,717 tokens, SolidWorks alone 23,404, both together 107,121; with this kit both servers advertise two meta-tools each and cost 612 tokens.</desc>
+<rect x="0" y="0" width="900" height="298" rx="10" fill="#ffffff"/>
+<text x="16" y="30" font-size="15" font-weight="500" fill="#1f2328">Idle context cost of the MCP tool catalogues</text>
+<text x="16" y="52" font-size="12.5" fill="#57606a">tokens, tiktoken cl100k_base, paid before the first request</text>
+<line x1="210.0" y1="62" x2="210.0" y2="264" stroke="#d0d7de" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="210.0" y="282" font-size="11" fill="#57606a" text-anchor="middle">0</text>
+<line x1="330.5" y1="62" x2="330.5" y2="264" stroke="#d0d7de" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="330.5" y="282" font-size="11" fill="#57606a" text-anchor="middle">25k</text>
+<line x1="450.9" y1="62" x2="450.9" y2="264" stroke="#d0d7de" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="450.9" y="282" font-size="11" fill="#57606a" text-anchor="middle">50k</text>
+<line x1="571.4" y1="62" x2="571.4" y2="264" stroke="#d0d7de" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="571.4" y="282" font-size="11" fill="#57606a" text-anchor="middle">75k</text>
+<line x1="691.8" y1="62" x2="691.8" y2="264" stroke="#d0d7de" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="691.8" y="282" font-size="11" fill="#57606a" text-anchor="middle">100k</text>
+<rect x="210" y="76" width="530" height="22" rx="3" fill="#eaeef2" opacity="0.55"/>
+<rect x="210" y="76" width="403.4" height="22" rx="3" fill="#D85A30"/>
+<text x="16" y="87" font-size="13" font-weight="500" fill="#1f2328">AutoCAD direct</text>
+<text x="16" y="101" font-size="11.5" fill="#57606a">242 tools</text>
+<text x="621.4" y="92" font-size="12.5" font-weight="500" fill="#1f2328">83,717</text>
+<rect x="210" y="122" width="530" height="22" rx="3" fill="#eaeef2" opacity="0.55"/>
+<rect x="210" y="122" width="112.8" height="22" rx="3" fill="#D85A30"/>
+<text x="16" y="133" font-size="13" font-weight="500" fill="#1f2328">SolidWorks direct</text>
+<text x="16" y="147" font-size="11.5" fill="#57606a">66 tools</text>
+<text x="330.8" y="138" font-size="12.5" font-weight="500" fill="#1f2328">23,404</text>
+<rect x="210" y="168" width="530" height="22" rx="3" fill="#eaeef2" opacity="0.55"/>
+<rect x="210" y="168" width="516.1" height="22" rx="3" fill="#D85A30"/>
+<text x="16" y="179" font-size="13" font-weight="500" fill="#1f2328">Both, direct</text>
+<text x="16" y="193" font-size="11.5" fill="#57606a">308 tools</text>
+<text x="734.1" y="184" font-size="12.5" font-weight="500" fill="#1f2328">107,121</text>
+<rect x="210" y="214" width="530" height="22" rx="3" fill="#eaeef2" opacity="0.55"/>
+<rect x="210" y="214" width="2.9" height="22" rx="3" fill="#1D9E75"/>
+<text x="16" y="225" font-size="13" font-weight="500" fill="#1f2328">This kit</text>
+<text x="16" y="239" font-size="11.5" fill="#57606a">2 + 2 meta-tools</text>
+<text x="220.9" y="230" font-size="12.5" font-weight="500" fill="#1f2328">612</text>
+</svg>

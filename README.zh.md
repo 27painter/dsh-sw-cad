@@ -35,6 +35,14 @@
 | `autocad` | 2 | 约 356 token | 上游自带 `DISCOVERY_MODE=search`：只广告 `search_tools` + `call_tool`，242 个工具的目录按关键词检索 |
 | `solidworks` | 2 | 256 token | 本仓库的 `mcp-shim/` 挡在上游 66 工具服务器前面（50 个 `solidworks_*` + 14 个 `cadstudio_*` + 2 个 `design_*`），后者全量广告要 23,404 token |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/token-cost-dark.svg">
+  <img alt="常驻上下文成本柱状图：AutoCAD 直连 83,717 token，SolidWorks 直连 23,404，两个都直连 107,121，本仓库配置 612" src="docs/token-cost-light.svg">
+</picture>
+
+*工具定义是在你提出第一个请求之前就要付掉的。两台服务器直连要 107,121 token，走本仓库这套配置是 612，
+省 99.4%。数字可用 `mcp-shim/verify_shim.py` 复现。*
+
 ```
 你说人话
    │
