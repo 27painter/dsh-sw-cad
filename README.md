@@ -82,23 +82,45 @@ protocol.
 
 > [!TIP]
 > **Rather not run any of this yourself?** Paste the block below into dsh, Codex, or any agent that can
-> run commands on this machine. It carries everything the agent needs — what to clone, where to put it,
-> and what not to touch — so you can read the rest of this section only if something goes wrong.
+> run commands on this machine. It carries everything the agent needs, so you can read the rest of this
+> section only if something goes wrong.
 
 ```text
 Install https://github.com/27painter/dsh-sw-cad on this Windows machine.
 
-1. Clone it to D:\dsh-sw-cad. If git is blocked by a proxy, download the codeload zip instead.
-2. Run its install.ps1 with -BaseDir D:\cad-agents -WorkDir D:\AutoCad.
-   Do not run it elevated: it must run as the same Windows user as AutoCAD and SolidWorks.
-3. Codex users: append codex-config.snippet.toml to ~/.codex/config.toml, then junction
-   D:\cad-agents\dsh-skills\solidworks-automation and D:\cad-agents\dsh-skills\autocad-mcp-pro
-   into ~/.codex\skills\.
-4. Verify with: dsh --profile headless --dump-config, codex mcp list, and rebuild the shim
-   catalogue by running mcp-shim\sw_discovery_shim.py --build-catalog.
-5. Do not modify AutoCAD, SolidWorks or the registry, and do not write to C: beyond ~/.dsh and
-   ~/.codex. If a step fails, report it instead of silently working around it.
+Clone it to D:\dsh-sw-cad and run bootstrap.ps1 there. It checks what is already
+present and installs only the missing parts (AutoCAD MCP, the SolidWorks skill,
+the discovery shim, the client configs).
+Do not run it elevated: it must run as the same Windows user as AutoCAD and
+SolidWorks. It writes nothing on C: except ~/.dsh and ~/.codex, and never touches
+the CAD installations or the registry.
+Report any step that fails instead of silently working around it.
 ```
+
+### One command: `bootstrap.ps1`
+
+```powershell
+.\bootstrap.ps1 -Check     # report only, changes nothing; exits 1 if something is missing
+.\bootstrap.ps1            # install whatever is missing
+```
+
+It inspects ten things and repairs only what is absent or stale:
+
+| Check | Fixed by |
+|---|---|
+| Python ≥ 3.11 | nothing — it reports the problem and stops |
+| `venv-autocad` + `autocad-mcp-pro` | `install.ps1` |
+| `venv-solidworks` + `mcp` / `pymupdf` / `ezdxf` / `pywin32` | `install.ps1` |
+| SolidWorks skill clone | `install.ps1` |
+| discovery shim | copied from this repository |
+| shim catalogue | rebuilt with `--build-catalog`, also when older than `server.py` |
+| `~/.dsh/skills` junction | created |
+| `~/.dsh/cordis.patch.yml` entries | `install.ps1` (backs the file up first) |
+| `~/.codex/skills` junctions | created |
+| `~/.codex/config.toml` entries | appended, with a backup |
+
+Running it twice is a no-op. It exits `0` when everything is in place and `1` otherwise, so it is safe to
+wrap in a script or hand to an agent. Nothing is downloaded unless a core piece is actually missing.
 
 ### Prerequisites
 
@@ -226,6 +248,9 @@ SolidWorks requirements, clones the skill (or zip-downloads it when git is block
 shim and builds its catalogue, junctions the skills into `~/.dsh/skills`, writes the dsh config, and drops
 the AutoCAD skill in place.
 
+If you are not sure what is already on the machine, run `bootstrap.ps1` instead: it decides whether
+`install.ps1` is needed at all.
+
 **Codex users still need one step** — append `codex-config.snippet.toml` to `~/.codex/config.toml` and
 junction the two skills into `~/.codex/skills/` (last four commands of Route A).
 
@@ -260,6 +285,9 @@ Practical notes, learned the hard way:
 ## Verification
 
 ```powershell
+# everything present? read-only, exits 1 if something is missing
+.\bootstrap.ps1 -Check
+
 # dsh sees both servers and both skills
 pnpm dsh --profile headless --dump-config
 pnpm dsh --profile headless "list available skills"

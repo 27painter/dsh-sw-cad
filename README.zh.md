@@ -77,22 +77,42 @@ junction 技巧，以及一个在 git 协议被拦时还能装完的安装器。
 
 > [!TIP]
 > **不想自己敲这些命令？** 把下面这段发给你的 agent（dsh、Codex，或任何能在这台机器上跑命令的 agent），
-> 它会替你装完。这段话把该克隆什么、装到哪、什么不能动都写清楚了——后面几节只在出问题时才需要看。
+> 它会替你装完——后面几节只在出问题时才需要看。
 
 ```text
 在这台 Windows 机器上安装 https://github.com/27painter/dsh-sw-cad。
 
-1. 克隆到 D:\dsh-sw-cad。git 被代理拦了就用 codeload zip 下载。
-2. 用 -BaseDir D:\cad-agents -WorkDir D:\AutoCad 运行它的 install.ps1。
-   不要提权运行：它必须和 AutoCAD、SolidWorks 是同一个 Windows 用户。
-3. Codex 用户：把 codex-config.snippet.toml 追加到 ~/.codex/config.toml，然后把
-   D:\cad-agents\dsh-skills\solidworks-automation 和 D:\cad-agents\dsh-skills\autocad-mcp-pro
-   junction 进 ~/.codex\skills\。
-4. 验证：dsh --profile headless --dump-config、codex mcp list，并运行
-   mcp-shim\sw_discovery_shim.py --build-catalog 重建垫片目录。
-5. 不要改动 AutoCAD、SolidWorks 和注册表，除 ~/.dsh 与 ~/.codex 之外不要往 C 盘写东西。
-   哪一步失败就如实报告，不要自己绕过。
+克隆到 D:\dsh-sw-cad，在里面运行 bootstrap.ps1。它会先检查哪些已经装了，
+只补缺失的部分（AutoCAD MCP、SolidWorks skill、discovery 垫片、客户端配置）。
+不要提权运行：它必须和 AutoCAD、SolidWorks 是同一个 Windows 用户。
+除 ~/.dsh 与 ~/.codex 之外不要往 C 盘写东西，也不要动 CAD 安装目录和注册表。
+哪一步失败就如实报告，不要自己绕过。
 ```
+
+### 一条命令：`bootstrap.ps1`
+
+```powershell
+.\bootstrap.ps1 -Check     # 只检测，不改动；缺东西时退出码为 1
+.\bootstrap.ps1            # 缺什么装什么
+```
+
+它检查十项，只修缺失或过期的部分：
+
+| 检查项 | 由谁修复 |
+|---|---|
+| Python ≥ 3.11 | 不修——报出问题就停 |
+| `venv-autocad` + `autocad-mcp-pro` | `install.ps1` |
+| `venv-solidworks` + `mcp` / `pymupdf` / `ezdxf` / `pywin32` | `install.ps1` |
+| SolidWorks skill 克隆 | `install.ps1` |
+| discovery 垫片 | 从本仓库拷贝 |
+| 垫片检索目录 | 用 `--build-catalog` 重建；比 `server.py` 旧时也会重建 |
+| `~/.dsh/skills` junction | 创建 |
+| `~/.dsh/cordis.patch.yml` 条目 | `install.ps1`（先备份） |
+| `~/.codex/skills` junction | 创建 |
+| `~/.codex/config.toml` 条目 | 追加（先备份） |
+
+跑第二次是空操作。全部就绪时退出码 `0`，否则 `1`，所以可以放心塞进脚本或交给 agent。
+除非核心组件真的缺失，否则不会下载任何东西。
 
 ### 前置条件
 
@@ -215,6 +235,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 （git 被拦时自动 zip 下载）、装 discovery 垫片并生成检索目录、junction 进 `~/.dsh/skills`、写 dsh 配置、
 落下 AutoCAD skill。
 
+不确定机器上已经装了什么的话，用 `bootstrap.ps1`：它自己会判断需不需要跑 `install.ps1`。
+
 **Codex 用户仍需一步**——把 `codex-config.snippet.toml` 追加到 `~/.codex/config.toml`，并把两个 skill
 junction 进 `~/.codex/skills/`（即路线 A 的最后四条命令）。
 
@@ -247,6 +269,9 @@ ISO A3 图框带标题栏和尺寸标注，存到 D:\AutoCad 并导出 PDF。
 ## 验证
 
 ```powershell
+# 该装的都装了吗？只读检测，缺东西时退出码 1
+.\bootstrap.ps1 -Check
+
 # dsh 是否看见两个服务器、两个技能
 pnpm dsh --profile headless --dump-config
 pnpm dsh --profile headless "列出当前可用的 skill"

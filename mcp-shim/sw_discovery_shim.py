@@ -543,6 +543,26 @@ class Shim:
                 return self.catalogue
             raise
 
+    def missing_upstream_hint(self):
+        """Return an actionable message when the upstream server is not installed."""
+        server = Path(self.upstream.server)
+        python = Path(self.upstream.python)
+        if not python.is_file():
+            return (
+                "The Python that runs the SolidWorks MCP server is missing: %s\n\n"
+                "From the dsh-sw-cad repository, run:\n"
+                "  powershell -ExecutionPolicy Bypass -File bootstrap.ps1\n"
+                "It installs only the missing pieces and leaves everything else alone." % (python,)
+            )
+        if not server.is_file():
+            return (
+                "The SolidWorks MCP server is not installed: %s\n\n"
+                "From the dsh-sw-cad repository, run:\n"
+                "  powershell -ExecutionPolicy Bypass -File bootstrap.ps1\n"
+                "It installs only the missing pieces and leaves everything else alone." % (server,)
+            )
+        return None
+
     # -- tools -------------------------------------------------------------- #
 
     def do_search(self, args):
@@ -557,9 +577,13 @@ class Shim:
         try:
             cat = self.ensure_catalogue()
         except Exception as exc:
+            hint = self.missing_upstream_hint()
+            if hint:
+                return _text_result(hint, is_error=True)
             return _text_result(
-                "Tool catalogue unavailable: %s\nSet SW_UPSTREAM_PYTHON / SW_UPSTREAM_SERVER, "
-                "or run this shim once with --build-catalog." % (exc,),
+                "Tool catalogue unavailable: %s\nRebuild it with:\n"
+                "  python sw_discovery_shim.py --build-catalog\n"
+                "or check SW_UPSTREAM_PYTHON / SW_UPSTREAM_SERVER." % (exc,),
                 is_error=True,
             )
 
@@ -607,6 +631,10 @@ class Shim:
                 is_error=True,
             )
 
+        hint = self.missing_upstream_hint()
+        if hint:
+            return _text_result(hint, is_error=True)
+
         try:
             self.upstream.start()
         except Exception as exc:
@@ -630,6 +658,9 @@ class Shim:
         return result
 
     def forward(self, method, params):
+        hint = self.missing_upstream_hint()
+        if hint:
+            raise RuntimeError(hint)
         self.upstream.start()
         resp = self.upstream.request(method, params, timeout=self.upstream_timeout)
         if "error" in resp:
