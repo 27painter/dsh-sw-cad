@@ -64,22 +64,103 @@ discovery 模式配置、按需 Skill 接线、把几个 G 的依赖挡在 C 盘
 
 ## 安装
 
-**路线 1 —— 一个脚本。** 在 `D:\cad-agents` 下建两个 venv（用 `-BaseDir` 改位置）、装两个服务器、克隆
-SolidWorks skill、junction 进 `~/.dsh/skills`，并写入 `~/.dsh/cordis.patch.yml`（原文件自动带时间戳备份）：
+### 前置条件
+
+- Windows 10/11，已安装并授权的 AutoCAD 2027（或 2026）和/或 SolidWorks 2026
+- PATH 里有 Python ≥ 3.11（`python --version`）
+- dsh（DeepSeek Harness）或 Codex CLI
+- Git —— 可选；git 被拦时安装器会自动降级为 codeload zip 下载
+
+先把仓库拿到本地：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+git clone https://github.com/27painter/dsh-sw-cad.git
+cd dsh-sw-cad
 ```
 
-**路线 2 —— 手动。** 把 `cordis.patch.yml` 拷进 `~/.dsh/cordis.patch.yml`（按需改路径），再跑一次安装脚本
-建环境；或者自己建 venv，把 patch 里的路径指过去。
+### 路线 A —— 按上游原始方式安装，再注册
 
-**Codex 用户多一步**——把 `codex-config.snippet.toml` 追加到 `~/.codex/config.toml` 末尾，再把技能 junction 进去：
+下面就是两个上游项目自己的安装说明。`install.ps1` 自动化的也是这些步骤，所以想理解或排查安装过程时看这一节。
+
+**AutoCAD MCP 服务器** —— [上游安装说明](https://github.com/U-C4N/Autocad-MCP#install)。装进数据盘上的 venv
+（本仓库推荐做法）：
 
 ```powershell
+python -m venv D:\cad-agents\venv-autocad
+D:\cad-agents\venv-autocad\Scripts\python.exe -m pip install "autocad-mcp-pro[full]"
+D:\cad-agents\venv-autocad\Scripts\autocad-mcp.exe --help    # stdio 服务器入口
+```
+
+不建 venv 的话，上游自己的一行式安装：
+
+```bash
+pip install autocad-mcp-pro              # 或：uvx autocad-mcp-pro
+autocad-mcp                              # 后端自动选择
+AUTOCAD_MCP_BACKEND=ezdxf autocad-mcp    # 无头 DXF，不需要 AutoCAD
+AUTOCAD_MCP_BACKEND=com   autocad-mcp    # 实控 AutoCAD（需要 [com] extra）
+```
+
+extras 含义：`[com]` = 实控 AutoCAD（pywin32 + Pillow），`[pdf]` = matplotlib（PDF/PNG 输出），
+`[office]` = openpyxl（XLSX 算量），`[full]` = 以上全部。上游还文档化了 HTTP 传输
+（`autocad-mcp --transport http --port 8000`）以及 Claude Desktop / Cursor 的 JSON 配置写法。
+
+**SolidWorks Skill + MCP** —— [上游快速开始](https://github.com/wzyn20051216/solidworks-automation-skill#quick-start)。
+上游提供三种入口，任选其一：
+
+```bash
+# 方式 1 —— 只装 Skill（最简单）
+npx github:wzyn20051216/solidworks-automation-skill
+
+# 方式 2 —— 通过 Smithery 装 MCP
+npm install -g @smithery/cli
+smithery mcp add wzyn20051216/solidworks-automation-skill --client codex --config '{}'
+
+# 方式 3 —— CAD Studio 桌面版，去上游 Releases 下载
+```
+
+手动克隆（本仓库的做法；想把 skill 放数据盘就用这个）：
+
+```powershell
+git clone --depth 1 https://github.com/wzyn20051216/solidworks-automation-skill.git D:\cad-agents\dsh-skills\solidworks-automation
+D:\cad-agents\venv-solidworks\Scripts\python.exe -m pip install -r D:\cad-agents\dsh-skills\solidworks-automation\requirements.txt
+D:\cad-agents\venv-solidworks\Scripts\python.exe -m pip install -r D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\requirements.txt
+D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\dsh-skills\solidworks-automation\scripts\cad_doctor.py
+```
+
+**把两个服务器注册到客户端。** dsh 读 `~/.dsh/cordis.patch.yml`——把本仓库的 `cordis.patch.yml` 拷过去并按需改
+路径；Codex 读 `~/.codex/config.toml`——追加 `codex-config.snippet.toml`，或者用上游自带的注册脚本
+（`mcp-server\register_codex_mcp.ps1 -Python <venv 的 python> -InstallDependencies`）。
+
+**让 Skill 可见。** 两个客户端都只扫自己的技能目录：
+
+```powershell
+# dsh：整个 skills 目录做一个 junction（与 install.ps1 行为一致）
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.dsh" | Out-Null
+New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\skills" -Target "D:\cad-agents\dsh-skills"
+
+# Codex：每个 skill 单独 junction（它的 skills 目录里可能还有别的技能）
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.codex\skills" | Out-Null
 New-Item -ItemType Junction -Path "$env:USERPROFILE\.codex\skills\solidworks-automation" -Target "D:\cad-agents\dsh-skills\solidworks-automation"
 New-Item -ItemType Junction -Path "$env:USERPROFILE\.codex\skills\autocad-mcp-pro"       -Target "D:\cad-agents\dsh-skills\autocad-mcp-pro"
 ```
+
+### 路线 B —— 一个脚本（本仓库）
+
+`install.ps1` 会把路线 A 全部跑一遍，外加那些容易做错的部分：两个 venv 落在数据盘、junction 接线、
+discovery 模式参数、以及 `~/.dsh/cordis.patch.yml` 的带时间戳备份。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+
+# 自定义位置 / 强制重建
+.\install.ps1 -BaseDir "E:\cad" -WorkDir "E:\AutoCad" -Force
+```
+
+它依次检查 Python、建目录、建两个 venv、装 `autocad-mcp-pro[full]` 和 SolidWorks 依赖、克隆 skill
+（git 被拦时自动 zip 下载）、junction 进 `~/.dsh/skills`、写 dsh 配置、落下 AutoCAD skill。
+
+**Codex 用户仍需一步**——把 `codex-config.snippet.toml` 追加到 `~/.codex/config.toml`，并把两个 skill
+junction 进 `~/.codex/skills/`（即路线 A 的最后四条命令）。
 
 > [!IMPORTANT]
 > **先开 CAD，并且同用户启动。** COM 自动化要跨一个被 Windows 按用户和完整性级别守护的进程边界。
