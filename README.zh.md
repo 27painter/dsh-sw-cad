@@ -75,6 +75,25 @@ junction 技巧，以及一个在 git 协议被拦时还能装完的安装器。
 
 ## 安装
 
+> [!TIP]
+> **不想自己敲这些命令？** 把下面这段发给你的 agent（dsh、Codex，或任何能在这台机器上跑命令的 agent），
+> 它会替你装完。这段话把该克隆什么、装到哪、什么不能动都写清楚了——后面几节只在出问题时才需要看。
+
+```text
+在这台 Windows 机器上安装 https://github.com/27painter/dsh-sw-cad。
+
+1. 克隆到 D:\dsh-sw-cad。git 被代理拦了就用 codeload zip 下载。
+2. 用 -BaseDir D:\cad-agents -WorkDir D:\AutoCad 运行它的 install.ps1。
+   不要提权运行：它必须和 AutoCAD、SolidWorks 是同一个 Windows 用户。
+3. Codex 用户：把 codex-config.snippet.toml 追加到 ~/.codex/config.toml，然后把
+   D:\cad-agents\dsh-skills\solidworks-automation 和 D:\cad-agents\dsh-skills\autocad-mcp-pro
+   junction 进 ~/.codex\skills\。
+4. 验证：dsh --profile headless --dump-config、codex mcp list，并运行
+   mcp-shim\sw_discovery_shim.py --build-catalog 重建垫片目录。
+5. 不要改动 AutoCAD、SolidWorks 和注册表，除 ~/.dsh 与 ~/.codex 之外不要往 C 盘写东西。
+   哪一步失败就如实报告，不要自己绕过。
+```
+
 ### 前置条件
 
 - Windows 10/11，已安装 AutoCAD 和/或 SolidWorks

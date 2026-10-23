@@ -80,6 +80,26 @@ protocol.
 
 ## Install
 
+> [!TIP]
+> **Rather not run any of this yourself?** Paste the block below into dsh, Codex, or any agent that can
+> run commands on this machine. It carries everything the agent needs — what to clone, where to put it,
+> and what not to touch — so you can read the rest of this section only if something goes wrong.
+
+```text
+Install https://github.com/27painter/dsh-sw-cad on this Windows machine.
+
+1. Clone it to D:\dsh-sw-cad. If git is blocked by a proxy, download the codeload zip instead.
+2. Run its install.ps1 with -BaseDir D:\cad-agents -WorkDir D:\AutoCad.
+   Do not run it elevated: it must run as the same Windows user as AutoCAD and SolidWorks.
+3. Codex users: append codex-config.snippet.toml to ~/.codex/config.toml, then junction
+   D:\cad-agents\dsh-skills\solidworks-automation and D:\cad-agents\dsh-skills\autocad-mcp-pro
+   into ~/.codex\skills\.
+4. Verify with: dsh --profile headless --dump-config, codex mcp list, and rebuild the shim
+   catalogue by running mcp-shim\sw_discovery_shim.py --build-catalog.
+5. Do not modify AutoCAD, SolidWorks or the registry, and do not write to C: beyond ~/.dsh and
+   ~/.codex. If a step fails, report it instead of silently working around it.
+```
+
 ### Prerequisites
 
 - Windows 10/11 with AutoCAD and/or SolidWorks installed
