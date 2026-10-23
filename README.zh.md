@@ -6,7 +6,8 @@
 它们封装了两个现成的开源项目——[U-C4N/Autocad-MCP](https://github.com/U-C4N/Autocad-MCP) 和
 [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill)——
 让 agent 能在 AutoCAD 里画图、在 SolidWorks 里建模，并把结果导出。本仓库是**配置层**：隔离环境、启动参数、
-按需加载、客户端注册。它不 fork、不魔改、不重新分发这两个服务器。
+按需加载、客户端注册。它不 fork、不魔改、不重新分发这两个服务器。上游缺什么能力，本仓库就在它前面补一层
+——比如 SolidWorks 没有办法收起自己那 66 个工具，那就加一个垫片，而不是动它。
 
 [English](README.md) | 中文
 
@@ -29,10 +30,10 @@
 
 两个 MCP 服务器是肌肉，注册在客户端配置里：
 
-| 服务器 | 工具数 | 模式 |
-|---|---|---|
-| `autocad` | 242 | `DISCOVERY_MODE=search`：只广告 `search_tools` + `call_tool`（空闲约 356 token），完整目录按关键词检索 |
-| `solidworks` | 66 | 全量广告（50 个 `solidworks_*` + 14 个 `cadstudio_*` + 2 个 `design_*`） |
+| 服务器 | 广告工具数 | 空闲成本 | 模式 |
+|---|---:|---:|---|
+| `autocad` | 2 | 约 356 token | 上游自带 `DISCOVERY_MODE=search`：只广告 `search_tools` + `call_tool`，242 个工具的目录按关键词检索 |
+| `solidworks` | 2 | 256 token | 本仓库的 `mcp-shim/` 挡在上游 66 工具服务器前面（50 个 `solidworks_*` + 14 个 `cadstudio_*` + 2 个 `design_*`），后者全量广告要 23,404 token |
 
 ```
 你说人话
@@ -42,8 +43,9 @@
    │      └─ autocad-mcp-pro        → search_tools / call_tool → MCP → AutoCAD
    │
    └─ MCP 服务器（cordis.patch.yml / codex config.toml）
-          ├─ autocad    discovery 模式，242 工具按需检索
-          └─ solidworks 66 工具 stdio 服务器
+          ├─ autocad    上游 discovery 模式，242 工具按需检索
+          └─ solidworks 本仓库垫片，2 个元工具，66 工具按需检索
+                          └─ 首次调用时才拉起上游 server.py
 ```
 
 ## 哪些是上游的，哪些是本仓库的
@@ -55,12 +57,13 @@
 | AutoCAD MCP 服务器（`autocad-mcp-pro`） | [U-C4N/Autocad-MCP](https://github.com/U-C4N/Autocad-MCP)，从 PyPI 安装 | MIT |
 | SolidWorks Skill + MCP 服务器 | [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill)，安装时克隆 | MIT |
 | `skills/autocad-mcp-pro/SKILL.md` | 本仓库原创——上游没有 AutoCAD skill | MIT |
+| `mcp-shim/`（SolidWorks discovery 垫片 + 词表） | 本仓库原创——上游没有等价机制 | MIT |
 | `install.ps1`、`cordis.patch.yml`、`codex-config.snippet.toml`、两份 README | 本仓库原创 | MIT |
 
 **上游代码一行都没有进仓库。** 安装脚本在运行时才去 PyPI 取包、克隆（或 zip 下载）SolidWorks 仓库，所以
 你拿到的永远是上游当前版本，著作权也始终归上游。本仓库补的是它们缺失的那一层：经过验证的启动参数、
-discovery 模式配置、按需 Skill 接线、把几个 G 的依赖挡在 C 盘之外的 junction 技巧，以及一个在 git 协议
-被拦时还能装完的安装器。
+discovery 模式配置、给缺这个机制的那台服务器补的垫片、按需 Skill 接线、把几个 G 的依赖挡在 C 盘之外的
+junction 技巧，以及一个在 git 协议被拦时还能装完的安装器。
 
 ## 安装
 
@@ -138,9 +141,23 @@ D:\cad-agents\venv-solidworks\Scripts\python.exe -m pip install -r D:\cad-agents
 D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\dsh-skills\solidworks-automation\scripts\cad_doctor.py
 ```
 
+**可选：给 SolidWorks 套上 discovery 垫片**（路线 B 会自动做）。不套的话，客户端每次请求都要背着 66 个
+工具定义——23,404 token：
+
+```powershell
+New-Item -ItemType Directory -Force -Path D:\cad-agents\mcp-shim | Out-Null
+Copy-Item .\mcp-shim\* D:\cad-agents\mcp-shim\ -Force
+
+# 建检索目录（装一次，之后上游更新了再重建）
+D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\mcp-shim\sw_discovery_shim.py `
+  --python D:\cad-agents\venv-solidworks\Scripts\python.exe `
+  --server D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py --build-catalog
+```
+
 **把两个服务器注册到客户端。** dsh 读 `~/.dsh/cordis.patch.yml`——把本仓库的 `cordis.patch.yml` 拷过去并按需改
 路径；Codex 读 `~/.codex/config.toml`——追加 `codex-config.snippet.toml`，或者用上游自带的注册脚本
-（`mcp-server\register_codex_mcp.ps1 -Python <venv 的 python> -InstallDependencies`）。
+（`mcp-server\register_codex_mcp.ps1 -Python <venv 的 python> -InstallDependencies`）。两份配置都已经指向
+垫片；如果你更想要直连的 66 工具服务器，两个文件里都留了注释掉的备用块。
 
 **让 Skill 可见。** 两个客户端都只扫自己的技能目录：
 
@@ -168,7 +185,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 它依次检查 Python、建目录、建两个 venv、装 `autocad-mcp-pro[full]` 和 SolidWorks 依赖、克隆 skill
-（git 被拦时自动 zip 下载）、junction 进 `~/.dsh/skills`、写 dsh 配置、落下 AutoCAD skill。
+（git 被拦时自动 zip 下载）、装 discovery 垫片并生成检索目录、junction 进 `~/.dsh/skills`、写 dsh 配置、
+落下 AutoCAD skill。
 
 **Codex 用户仍需一步**——把 `codex-config.snippet.toml` 追加到 `~/.codex/config.toml`，并把两个 skill
 junction 进 `~/.codex/skills/`（即路线 A 的最后四条命令）。
@@ -212,31 +230,47 @@ pnpm dsh --profile headless "列出当前可用的 skill"
 # AutoCAD MCP 能起来并报告版本
 & "D:\cad-agents\venv-autocad\Scripts\autocad-mcp.exe" --help
 
+# SolidWorks 垫片：重建目录并打印工具数
+& "D:\cad-agents\venv-solidworks\Scripts\python.exe" "D:\cad-agents\mcp-shim\sw_discovery_shim.py" `
+  --python "D:\cad-agents\venv-solidworks\Scripts\python.exe" `
+  --server "D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py" --build-catalog
+
 # Codex
 codex mcp list
 ```
 
-发布前实际验证过的：两个 MCP 服务器都能完成 JSON-RPC 握手（`autocad-mcp-pro` v3.4.11、`solidworks_mcp`
+发布前实际验证过的：两个 MCP 服务器都能完成 JSON-RPC 握手（`autocad-mcp-pro` v1.6.0、`solidworks_mcp`
 v1.30.0）；discovery 模式只广告两个元工具，且能按关键词检索到 `gear_draw_spur_front_view` /
-`keyway_draw_keyed_bore`；`dsh --dump-config` 两条注册都能加载；SolidWorks 自检通过。
+`keyway_draw_keyed_bore`；`dsh --dump-config` 两条注册都能加载；SolidWorks 自检通过。垫片做了端到端实测：
+36 条中英文查询下 `tools/list` 是 256 token 而不是 23,404，每条查询的首位结果都正确，`call_tool` 把
+`solidworks_health_check` 转发给了真实运行的 SolidWorks 2026。
 
 ## 设计说明
 
 **1. discovery 模式是这套配置的核心。** 242 个工具定义全量广告约 8.4 万 token。discovery 模式下客户端只看到
 两个工具（约 356 token），检索目录里带 206 个 AutoCAD 命令名 + 1439 个同义词——说"倒角"能找到 `FILLET`。
 
-**2. `TOOL_PROFILE` 保持 `full`、`TOOL_PACKS` 保持 `all`。** 它们只收缩"可检索目录"，不改变空闲成本。
+**2. SolidWorks 也需要同一招，所以有了垫片。** 上游服务器无条件注册全部 66 个工具，实测在线上就是 23,404
+token，还没问任何问题就先付掉了。垫片只广告 `search_tools` + `call_tool`（256 token），检索走缓存目录，
+真正调用工具时才拉起上游进程。`sw_lexicon.json` 里 57 组中英同义词就是"拉伸凸台"能落到
+`solidworks_sketch_and_extrude`、"干涉检查"能落到 `solidworks_interference_check` 的原因。上游一行没动，
+所以 skill 目录里 `git pull` 照常可用。
+
+**3. `TOOL_PROFILE` 保持 `full`、`TOOL_PACKS` 保持 `all`。** 它们只收缩"可检索目录"，不改变空闲成本。
 实测 `lean + core,mech` 会把目录砍到 58 个工具，参数化齿轮和键槽工具直接搜不到——收缩 packs 只丢能力，
 一个 token 也省不下。
 
-**3. 用 junction，不复制。** dsh 只扫 `~/.dsh/skills`，Codex 只扫 `~/.codex/skills`。目录联接把两边都指到
+**4. 用 junction，不复制。** dsh 只扫 `~/.dsh/skills`，Codex 只扫 `~/.codex/skills`。目录联接把两边都指到
 数据盘，两个工具都无感知。删联接不删数据。
 
-**4. 把文件访问圈起来。** AutoCAD 服务器的 `ALLOWED_PATHS` 默认是空的，它自己的 README 也要求你设置。
+**5. 把文件访问圈起来。** AutoCAD 服务器的 `ALLOWED_PATHS` 默认是空的，它自己的 README 也要求你设置。
 本配置包把它设为一个工作目录。
 
-**5. 分清什么验证过。** 安装章节的版本表写得很直白：上游验证过 AutoCAD 2026 和 SolidWorks 2026 SP4.1，
+**6. 分清什么验证过。** 安装章节的版本表写得很直白：上游验证过 AutoCAD 2026 和 SolidWorks 2026 SP4.1，
 其余都是"预期"而非"已证明"——先拿小任务试。
+
+**7. discovery 不是免费，只是延后。** 每次调用多一个来回：先搜再调。只画一个方块时它比直连慢，而且上游
+skill 更新后没重建目录，检索结果会过期。但 CAD 任务通常一次会话里要调好几个工具，这笔账是划算的。
 
 ## 排障
 
@@ -246,6 +280,8 @@ v1.30.0）；discovery 模式只广告两个元工具，且能按关键词检索
 | Codex 列不出 skill | `~/.codex/skills\` 下两个 junction 是否都在；Codex 版本需支持 skills |
 | AutoCAD 工具调了没反应 | CAD 没开，或用户/完整性级别不一致；设 `AUTOCAD_MCP_BACKEND=com` 排除 ezdxf 降级 |
 | SolidWorks 自检不过 | 缺依赖（装 skill 的 `requirements.txt`）或 SW 没开 |
+| `search_tools` 搜出一个已经不存在的工具 | 垫片的目录过期了——重跑 `--build-catalog` |
+| `call_tool` 报"Could not start the SolidWorks MCP server" | 客户端配置里的 `--python` / `--server` 路径不对，或 skill 被移动了 |
 | `codex mcp list` 为空 | 追加段必须在 `config.toml` 末尾；路径要双反斜杠 |
 | 安装时 `git clone` 失败 | 安装器会自动降级到 codeload zip 下载 |
 

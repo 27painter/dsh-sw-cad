@@ -10,6 +10,8 @@
   - Creates a directory junction  ~/.dsh/skills -> <BaseDir>\dsh-skills
     so dsh auto-discovers the skill from its default scan path while the
     files physically live on the data drive
+  - Installs the discovery shim to <BaseDir>\mcp-shim and builds its catalogue
+    (2 meta-tools instead of 66: ~256 tokens idle instead of ~23.4k)
   - Copies the two dsh patch files into <BaseDir>
   - Backs up and rewrites ~/.dsh/cordis.patch.yml (adds two insert entries)
   Does NOT touch CAD software, the registry, or ~/.codex/config.toml.
@@ -43,16 +45,18 @@ $VenvAcad  = Join-Path $BaseDir "venv-autocad"
 $VenvSw    = Join-Path $BaseDir "venv-solidworks"
 $SkillsDir = Join-Path $BaseDir "dsh-skills"                    # physical location
 $SkillDest = Join-Path $SkillsDir "solidworks-automation"       # dir name == frontmatter name
+$ShimDir   = Join-Path $BaseDir "mcp-shim"                      # discovery shim for SolidWorks
 $SkillRepo = "https://github.com/wzyn20051216/solidworks-automation-skill.git"
 $SkillZip  = "https://codeload.github.com/wzyn20051216/solidworks-automation-skill/zip/refs/heads/main"
 $Junction  = Join-Path $env:USERPROFILE ".dsh\skills"          # logical path dsh scans
 $DshHome   = Join-Path $env:USERPROFILE ".dsh"
 $PatchFile = Join-Path $DshHome "cordis.patch.yml"
+$SwServer  = Join-Path $SkillDest "mcp-server\server.py"
 
 function Say($msg) { Write-Host "==> $msg" }
 
 # ---------- 1. Python check ----------
-Say "[1/7] Checking Python (need >= 3.11 for autocad-mcp-pro)..."
+Say "[1/8] Checking Python (need >= 3.11 for autocad-mcp-pro)..."
 if (-not (Test-Path -LiteralPath $Python)) {
     $cmd = Get-Command $Python -ErrorAction SilentlyContinue
     if ($cmd) { $Python = $cmd.Source } else { throw "Python not found: $Python" }
@@ -66,13 +70,13 @@ if ([int]$p[0] -lt 3 -or ([int]$p[0] -eq 3 -and [int]$p[1] -lt 11)) {
 Write-Host "    Python $ver OK  (base: $Python)"
 
 # ---------- 2. data dirs ----------
-Say "[2/7] Creating $BaseDir and $WorkDir ..."
+Say "[2/8] Creating $BaseDir and $WorkDir ..."
 New-Item -ItemType Directory -Force -Path $BaseDir | Out-Null
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null   # MCP ALLOWED_PATHS target
 $env:PIP_CACHE_DIR = Join-Path $BaseDir "pip_cache"   # keep pip cache off C: too
 
 # ---------- 3. venvs on D: ----------
-Say "[3/7] Creating venvs on D: ..."
+Say "[3/8] Creating venvs on D: ..."
 foreach ($vp in @($VenvAcad, $VenvSw)) {
     if ((Test-Path -LiteralPath $vp) -and $Force) { Remove-Item -Recurse -Force -LiteralPath $vp }
     if (-not (Test-Path -LiteralPath $vp)) {
@@ -84,7 +88,7 @@ foreach ($vp in @($VenvAcad, $VenvSw)) {
 }
 
 # ---------- 4. junction ~/.dsh/skills -> <BaseDir>\dsh-skills ----------
-Say "[4/7] Linking ~/.dsh/skills -> $SkillsDir (junction)..."
+Say "[4/8] Linking ~/.dsh/skills -> $SkillsDir (junction)..."
 New-Item -ItemType Directory -Force -Path $SkillsDir | Out-Null
 if (Test-Path -LiteralPath $Junction) {
     Write-Host "    ~/.dsh/skills already exists, skipping (fine if it is already a junction)"
@@ -96,7 +100,7 @@ else {
 }
 
 # ---------- 5. SolidWorks skill ----------
-Say "[5/7] Cloning SolidWorks skill to $SkillDest ..."
+Say "[5/8] Cloning SolidWorks skill to $SkillDest ..."
 if ((Test-Path -LiteralPath $SkillDest) -and $Force) { Remove-Item -Recurse -Force -LiteralPath $SkillDest }
 if (-not (Test-Path -LiteralPath $SkillDest)) {
     $hasGit = [bool](Get-Command git -ErrorAction SilentlyContinue)
@@ -137,7 +141,7 @@ else {
 }
 
 # ---------- 6. Python packages ----------
-Say "[6/7] Installing Python packages (pip cache -> D:\pip_cache)..."
+Say "[6/8] Installing Python packages (pip cache -> D:\pip_cache)..."
 $pyAcad = Join-Path $VenvAcad "Scripts\python.exe"
 $pySw   = Join-Path $VenvSw   "Scripts\python.exe"
 
@@ -156,8 +160,26 @@ if (Test-Path -LiteralPath $swRootReq) {
     if ($LASTEXITCODE -ne 0) { throw "pip install -r root requirements.txt failed" }
 }
 
-# ---------- 7. dsh patch config + AutoCAD skill ----------
-Say "[7/7] Writing dsh MCP config (cordis.patch.yml) and skills..."
+# ---------- 7. SolidWorks discovery shim ----------
+Say "[7/8] Installing the SolidWorks discovery shim to $ShimDir ..."
+New-Item -ItemType Directory -Force -Path $ShimDir | Out-Null
+$shimSrcDir = Join-Path $PSScriptRoot "mcp-shim"
+foreach ($f in @("sw_discovery_shim.py", "sw_lexicon.json", "README.md")) {
+    $src = Join-Path $shimSrcDir $f
+    if (Test-Path -LiteralPath $src) {
+        Copy-Item -LiteralPath $src -Destination (Join-Path $ShimDir $f) -Force
+    }
+}
+$shimScript = Join-Path $ShimDir "sw_discovery_shim.py"
+if (-not (Test-Path -LiteralPath $shimScript)) { throw "shim not found: $shimScript" }
+
+# Build the tool catalogue once, so search_tools works without spawning SolidWorks.
+# Rebuild any time the upstream skill is updated:  python sw_discovery_shim.py --build-catalog
+& $pySw $shimScript --python $pySw --server $SwServer --build-catalog
+if ($LASTEXITCODE -ne 0) { throw "catalogue build failed (is $SwServer importable?)" }
+
+# ---------- 8. dsh patch config + AutoCAD skill ----------
+Say "[8/8] Writing dsh MCP config (cordis.patch.yml) and skills..."
 $kitDir = $PSScriptRoot
 $patchTemplate = Join-Path $kitDir "cordis.patch.yml"
 if (Test-Path -LiteralPath $patchTemplate) {
@@ -188,9 +210,10 @@ $patchContent = @"
 #   - solidworks-automation  ($SkillDest)
 #   - autocad-mcp-pro         ($SkillsDir\autocad-mcp-pro)
 # Muscles (kept): both MCP servers registered below.
-#   - autocad   : DISCOVERY mode = 2 meta-tools only (~356 tokens idle),
+#   - autocad   : DISCOVERY mode = 2 meta-tools only (~256 tokens idle),
 #                 full 242-tool catalog searched on demand.
-#   - solidworks: skill is the primary entry; MCP is the alternative muscle.
+#   - solidworks: our shim = 2 meta-tools only (~256 tokens idle) instead of
+#                 66 tools (~23.4k). It spawns the upstream server on first use.
 - insert:
     - id: mcp-autocad
       name: '@deepseek-ai/dsh-mcp-client'
@@ -220,8 +243,13 @@ $patchContent = @"
         transport: stdio
         command: '$VenvSw\Scripts\python.exe'
         args:
-          - '$SkillDest\mcp-server\server.py'
-        env: {}
+          - '$ShimDir\sw_discovery_shim.py'
+          - '--python'
+          - '$VenvSw\Scripts\python.exe'
+          - '--server'
+          - '$SwServer'
+        env:
+          SW_SHIM_TOP_K: '8'
         toolCallTimeoutMs: 300000
         failOnStartupError: false
         reconnect:
@@ -236,10 +264,12 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 # ---------- verify ----------
 $acadExe = Join-Path $VenvAcad "Scripts\autocad-mcp.exe"
-$swServer = Join-Path $SkillDest "mcp-server\server.py"
+$swServer = $SwServer
+$shimFile = Join-Path $ShimDir "sw_discovery_shim.py"
+$shimCatalog = Join-Path $ShimDir "sw_catalog.json"
 $skillVisible = Join-Path $Junction "solidworks-automation\SKILL.md"
 $acadSkillVisible = Join-Path $Junction "autocad-mcp-pro\SKILL.md"
-foreach ($f in @($acadExe, $swServer, $skillVisible, $acadSkillVisible, $PatchFile)) {
+foreach ($f in @($acadExe, $swServer, $shimFile, $shimCatalog, $skillVisible, $acadSkillVisible, $PatchFile)) {
     if (-not (Test-Path -LiteralPath $f)) { throw "verify failed, missing: $f" }
 }
 
@@ -249,14 +279,18 @@ Write-Host " Install complete. Everything heavy is on $BaseDir."
 Write-Host "   Skills (on-demand entry):"
 Write-Host "     - solidworks-automation  (script-based, SW 2026)"
 Write-Host "     - autocad-mcp-pro        (MCP discovery mode, AutoCAD 2026/2027 verified)"
-Write-Host "   AutoCAD MCP : $acadExe"
-Write-Host "   SW MCP      : $pySw $swServer"
+Write-Host "   AutoCAD MCP : $acadExe   (2 meta-tools, ~256 tokens idle)"
+Write-Host "   SW MCP      : $pySw $shimFile   (2 meta-tools, ~256 tokens idle)"
+Write-Host "                 upstream: $swServer   (66 tools, ~23.4k tokens)"
 Write-Host "   dsh config  : $PatchFile  (template copied to $BaseDir\cordis.patch.yml)"
 Write-Host ""
 Write-Host " Verify:"
 Write-Host "   pnpm dsh --profile headless --dump-config"
 Write-Host "   pnpm dsh --profile headless `"list available skills`""
 Write-Host "   SW self-check: & '$pySw' '$SkillDest\scripts\sw_preflight.py'"
+Write-Host ""
+Write-Host " After updating the upstream skill, rebuild the shim catalogue:"
+Write-Host "   & '$pySw' '$shimFile' --python '$pySw' --server '$swServer' --build-catalog"
 Write-Host ""
 Write-Host " Reminder: start AutoCAD / SolidWorks first (2026/2027 verified, older may work),"
 Write-Host " and run dsh/Codex as the SAME Windows user and integrity level as the CAD apps."

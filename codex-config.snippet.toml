@@ -18,6 +18,21 @@ DISCOVERY_MODE = "search"
 ALLOWED_PATHS = "D:\\AutoCad"
 
 [mcp_servers.solidworks]
+# discovery shim: 2 meta-tools at idle (~256 tokens) instead of the upstream
+# 66-tool catalog (~23.4k). The shim spawns server.py on the first call_tool.
 command = "D:\\cad-agents\\venv-solidworks\\Scripts\\python.exe"
-args = ["D:\\cad-agents\\dsh-skills\\solidworks-automation\\mcp-server\\server.py"]
+args = [
+  "D:\\cad-agents\\mcp-shim\\sw_discovery_shim.py",
+  "--python", "D:\\cad-agents\\venv-solidworks\\Scripts\\python.exe",
+  "--server", "D:\\cad-agents\\dsh-skills\\solidworks-automation\\mcp-server\\server.py",
+]
 startup_timeout_sec = 30
+
+[mcp_servers.solidworks.env]
+SW_SHIM_TOP_K = "8"
+
+# To use the upstream 66-tool server directly instead, replace the block above with:
+# [mcp_servers.solidworks]
+# command = "D:\\cad-agents\\venv-solidworks\\Scripts\\python.exe"
+# args = ["D:\\cad-agents\\dsh-skills\\solidworks-automation\\mcp-server\\server.py"]
+# startup_timeout_sec = 30

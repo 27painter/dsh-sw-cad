@@ -1,5 +1,9 @@
 # Normalize line endings on checkout/commit so Windows and POSIX contributors
 # produce identical diffs.
 * text=auto eol=lf
+
+# PowerShell 5.1 is happiest with CRLF, and Windows users will edit this file.
+*.ps1 text eol=crlf
+
 *.png binary
 *.pdf binary
