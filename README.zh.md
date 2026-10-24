@@ -1,6 +1,7 @@
 # dsh-sw-cad
 
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![npm](https://img.shields.io/npm/v/dsh-sw-cad?logo=npm)](https://www.npmjs.com/package/dsh-sw-cad)
 
 **两个 MCP 服务器 + 两个 Skill，让 DeepSeek Harness 或 Codex 的 agent 真正操控 CAD 软件。**
 它们封装了两个现成的开源项目——[U-C4N/Autocad-MCP](https://github.com/U-C4N/Autocad-MCP) 和
@@ -75,45 +76,35 @@ junction 技巧，以及一个在 git 协议被拦时还能装完的安装器。
 
 ## 安装
 
-> [!TIP]
-> **不想自己敲这些命令？** 把下面这段发给你的 agent（dsh、Codex，或任何能在这台机器上跑命令的 agent），
-> 它会替你装完——后面几节只在出问题时才需要看。
+三条路，挑一条。装之前先看本节末尾的前置条件。
 
-```text
-在这台 Windows 机器上安装 https://github.com/27painter/dsh-sw-cad。
-
-运行：npm install -g dsh-sw-cad && dsh-sw-cad install
-第一条装包，第二条装两个上游服务器（AutoCAD MCP 与 SolidWorks skill）并写好客户端条目。
-dsh-sw-cad install 是幂等的，只补缺失的部分。
-
-不要提权运行：它必须和 AutoCAD、SolidWorks 是同一个 Windows 用户。
-除 ~/.dsh 与 ~/.codex 之外不要往 C 盘写东西，也不要动 CAD 安装目录和注册表。
-装完用 dsh-sw-cad doctor、dsh --profile headless --dump-config、codex mcp list 验证。
-哪一步失败就如实报告，不要自己绕过。
-```
-
-### 作为 dsh 插件安装（推荐）
+### 1. npm 全局安装（推荐）
 
 ```bash
-npm install -g dsh-sw-cad          # 或：dsh plugin --profile web add dsh-sw-cad
-dsh-sw-cad install                 # 装上游服务器与客户端条目，只跑一次
+npm install -g dsh-sw-cad
+dsh-sw-cad install
+```
+
+两条命令：第一条把可执行文件放进 PATH，第二条装两个上游服务器（AutoCAD MCP 与 SolidWorks skill）
+并写好客户端条目。`install` 是幂等的，只补缺失的部分。
+
+### 2. 作为 dsh 插件安装
+
+```bash
+dsh plugin --profile web add dsh-sw-cad
+dsh-sw-cad install
 ```
 
 包里声明了 `dsh.bundle.patch`，所以 `dsh plugin add` 会读到它的 `cordis.patch.yml`，插入两条 MCP 客户端
-记录。两条记录调用的都是 `dsh-sw-cad` 这个命令，它在运行时自己解析全部路径（自身位置 + `~/.dsh/sw-cad.json`）。
-所以这个 patch 里一个绝对路径都没有，同一份包在任何机器上都成立。
+记录。两条记录调用的都是 `dsh-sw-cad` 这个命令，它在运行时自己解析全部路径（自身位置 + `~/.dsh/sw-cad.json`）
+——所以这个 patch 里一个绝对路径都没有，同一份包在任何机器上都成立。
 
-| 命令 | 作用 |
-|---|---|
-| `dsh-sw-cad install` | 装上游 AutoCAD MCP 与 SolidWorks skill，并写客户端条目 |
-| `dsh-sw-cad doctor` | 报告哪些有、哪些缺，不改动；缺东西时退出码 1 |
-| `dsh-sw-cad where` | 打印服务器会用到的每一条路径 |
-| `dsh-sw-cad serve autocad\|solidworks` | 以 stdio 跑一个 MCP 服务器；由 dsh 调用，一般不用手动执行 |
+> [!WARNING]
+> 这两条记录要能启动，`dsh-sw-cad` 必须在 PATH 上。`dsh plugin add` 是装进 profile 的，而 dsh 不会把
+> profile 的 `node_modules/.bin` 加进 PATH。所以要么把第 1 步也做一遍，要么把 `command` 改成
+> `dsh-sw-cad where` 打印出来的绝对路径。
 
-`install` 是幂等的。不跑也行——第一次 `serve` 时会自动补一次；设 `SW_CAD_NO_AUTO_INSTALL=1` 可关掉这个行为，
-改成直接报错。
-
-### 不用 npm：`bootstrap.ps1`
+### 3. 不用 npm：`bootstrap.ps1`
 
 ```powershell
 git clone https://github.com/27painter/dsh-sw-cad.git
@@ -140,11 +131,40 @@ cd dsh-sw-cad
 跑第二次是空操作。全部就绪时退出码 `0`，否则 `1`，所以可以放心塞进脚本或交给 agent。
 除非核心组件真的缺失，否则不会下载任何东西。
 
+### 命令一览
+
+| 命令 | 作用 |
+|---|---|
+| `dsh-sw-cad install` | 装上游 AutoCAD MCP 与 SolidWorks skill，并写客户端条目 |
+| `dsh-sw-cad doctor` | 报告哪些有、哪些缺，不改动；缺东西时退出码 1 |
+| `dsh-sw-cad where` | 打印服务器会用到的每一条路径 |
+| `dsh-sw-cad serve autocad\|solidworks` | 以 stdio 跑一个 MCP 服务器；由 dsh 调用，一般不用手动执行 |
+
+`install` 是幂等的。不跑也行——第一次 `serve` 时会自动补一次；设 `SW_CAD_NO_AUTO_INSTALL=1` 可关掉这个行为，
+改成直接报错。
+
+> [!TIP]
+> **不想自己敲这些命令？** 把下面这段发给你的 agent（dsh、Codex，或任何能在这台机器上跑命令的 agent），
+> 它会替你装完——后面几节只在出问题时才需要看。
+
+```text
+在这台 Windows 机器上安装 https://github.com/27painter/dsh-sw-cad。
+
+运行：npm install -g dsh-sw-cad && dsh-sw-cad install
+第一条装包，第二条装两个上游服务器（AutoCAD MCP 与 SolidWorks skill）并写好客户端条目。
+dsh-sw-cad install 是幂等的，只补缺失的部分。
+
+不要提权运行：它必须和 AutoCAD、SolidWorks 是同一个 Windows 用户。
+除 ~/.dsh 与 ~/.codex 之外不要往 C 盘写东西，也不要动 CAD 安装目录和注册表。
+装完用 dsh-sw-cad doctor、dsh --profile headless --dump-config、codex mcp list 验证。
+哪一步失败就如实报告，不要自己绕过。
+```
+
 ### 前置条件
 
 - Windows 10/11，已安装 AutoCAD 和/或 SolidWorks
 - PATH 里有 Python ≥ 3.11（`python --version`）
-- dsh（DeepSeek Harness）或 Codex CLI
+- dsh（DeepSeek Harness）或 Codex CLI；第 1、2 条路还需要 Node ≥ 20
 - Git —— 可选；git 被拦时安装器会自动降级为 codeload zip 下载
 
 先把仓库拿到本地：
@@ -165,7 +185,7 @@ cd dsh-sw-cad
 
 老版本不会被拒绝——代码里没有任何版本号检查。它们只是不在上游的验证范围内，所以**先拿一个小任务试，看过结果再信任整张图**。
 
-### 路线 A —— 按上游原始方式安装，再注册
+### 附录 —— 上游自己的安装步骤
 
 下面就是两个上游项目自己的安装说明。`install.ps1` 自动化的也是这些步骤，所以想理解或排查安装过程时看这一节。
 
@@ -214,7 +234,7 @@ D:\cad-agents\venv-solidworks\Scripts\python.exe -m pip install -r D:\cad-agents
 D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\dsh-skills\solidworks-automation\scripts\cad_doctor.py
 ```
 
-**可选：给 SolidWorks 套上 discovery 垫片**（路线 B 会自动做）。不套的话，客户端每次请求都要背着 66 个
+**可选：给 SolidWorks 套上 discovery 垫片**（上面三条路都会自动做，这里是手动步骤）。不套的话，客户端每次请求都要背着 66 个
 工具定义——23,404 token：
 
 ```powershell
@@ -246,9 +266,9 @@ New-Item -ItemType Junction -Path "$env:USERPROFILE\.codex\skills\solidworks-aut
 New-Item -ItemType Junction -Path "$env:USERPROFILE\.codex\skills\autocad-mcp-pro"       -Target "D:\cad-agents\dsh-skills\autocad-mcp-pro"
 ```
 
-### 路线 B —— 一个脚本（本仓库）
+### 附录 —— `install.ps1` 干了什么
 
-`install.ps1` 会把路线 A 全部跑一遍，外加那些容易做错的部分：两个 venv 落在数据盘、junction 接线、
+`install.ps1` 会把上面附录里的事全跑一遍，外加那些容易做错的部分：两个 venv 落在数据盘、junction 接线、
 discovery 模式参数、以及 `~/.dsh/cordis.patch.yml` 的带时间戳备份。
 
 ```powershell
@@ -265,7 +285,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 不确定机器上已经装了什么的话，用 `bootstrap.ps1`：它自己会判断需不需要跑 `install.ps1`。
 
 **Codex 用户仍需一步**——把 `codex-config.snippet.toml` 追加到 `~/.codex/config.toml`，并把两个 skill
-junction 进 `~/.codex/skills/`（即路线 A 的最后四条命令）。
+junction 进 `~/.codex/skills/`（即附录里的最后四条命令）。
 
 > [!IMPORTANT]
 > **先开 CAD，并且同用户启动。** COM 自动化要跨一个被 Windows 按用户和完整性级别守护的进程边界。
