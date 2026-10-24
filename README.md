@@ -1,6 +1,7 @@
 # dsh-sw-cad
 
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![npm](https://img.shields.io/npm/v/dsh-sw-cad?logo=npm)](https://www.npmjs.com/package/dsh-sw-cad)
 
 **Two MCP servers and two skills that let a DeepSeek Harness or Codex agent drive real CAD software.**
 They wire up two existing open-source projects — [U-C4N/Autocad-MCP](https://github.com/U-C4N/Autocad-MCP)
@@ -80,50 +81,37 @@ protocol.
 
 ## Install
 
-> [!TIP]
-> **Rather not run any of this yourself?** Paste the block below into dsh, Codex, or any agent that can
-> run commands on this machine. It carries everything the agent needs, so you can read the rest of this
-> section only if something goes wrong.
+Three ways in. Pick one, then check the prerequisites at the end of this section.
 
-```text
-Install https://github.com/27painter/dsh-sw-cad on this Windows machine.
-
-Run: npm install -g dsh-sw-cad && dsh-sw-cad install
-That installs the package, then the two upstream servers (AutoCAD MCP and the
-SolidWorks skill) plus the client entries. dsh-sw-cad install is idempotent and
-only touches what is missing.
-
-Do not run it elevated: it must run as the same Windows user as AutoCAD and
-SolidWorks. It writes nothing on C: except ~/.dsh and ~/.codex, and never touches
-the CAD installations or the registry.
-Then verify with: dsh-sw-cad doctor, dsh --profile headless --dump-config, codex mcp list.
-Report any step that fails instead of silently working around it.
-```
-
-### As a dsh plugin (recommended)
+### 1. npm, global (recommended)
 
 ```bash
-npm install -g dsh-sw-cad          # or: dsh plugin --profile web add dsh-sw-cad
-dsh-sw-cad install                 # upstream servers + client entries, once
+npm install -g dsh-sw-cad
+dsh-sw-cad install
 ```
 
-The package declares `dsh.bundle.patch`, so `dsh plugin add` picks up its
-`cordis.patch.yml` and inserts two MCP client rows. Both rows call the `dsh-sw-cad`
-binary, which resolves every path it needs at runtime (its own location plus
-`~/.dsh/sw-cad.json`). That is why the patch contains no absolute path: the same
-bundle works on any machine.
+Two commands: the first puts the binary on PATH, the second installs the two upstream servers (the
+AutoCAD MCP and the SolidWorks skill) and writes the client entries. `install` is idempotent and only
+touches what is missing.
 
-| Command | What it does |
-|---|---|
-| `dsh-sw-cad install` | install the upstream AutoCAD MCP and the SolidWorks skill, and write the client entries |
-| `dsh-sw-cad doctor` | report present/missing pieces, change nothing, exit 1 if something is missing |
-| `dsh-sw-cad where` | print every path the servers will use |
-| `dsh-sw-cad serve autocad\|solidworks` | run one MCP server over stdio; dsh calls this, you normally don't |
+### 2. As a dsh plugin
 
-`install` is idempotent. If you skip it, the first `serve` runs it once on demand — set
-`SW_CAD_NO_AUTO_INSTALL=1` to disable that and get a plain error instead.
+```bash
+dsh plugin --profile web add dsh-sw-cad
+dsh-sw-cad install
+```
 
-### Without npm: `bootstrap.ps1`
+The package declares `dsh.bundle.patch`, so `dsh plugin add` picks up its `cordis.patch.yml` and inserts
+two MCP client rows. Both rows call the `dsh-sw-cad` binary, which resolves every path it needs at runtime
+(its own location plus `~/.dsh/sw-cad.json`) — that is why the patch contains no absolute path and the
+same bundle works on any machine.
+
+> [!WARNING]
+> The binary has to be on PATH for those two rows to start. `dsh plugin add` installs into the profile,
+> and dsh does not put that profile's `node_modules/.bin` on PATH. Either also run step 1, or point
+> `command` at the absolute path that `dsh-sw-cad where` prints.
+
+### 3. Without npm: `bootstrap.ps1`
 
 ```powershell
 git clone https://github.com/27painter/dsh-sw-cad.git
@@ -150,11 +138,43 @@ It inspects ten things and repairs only what is absent or stale:
 Running it twice is a no-op. It exits `0` when everything is in place and `1` otherwise, so it is safe to
 wrap in a script or hand to an agent. Nothing is downloaded unless a core piece is actually missing.
 
+### Commands
+
+| Command | What it does |
+|---|---|
+| `dsh-sw-cad install` | install the upstream AutoCAD MCP and the SolidWorks skill, and write the client entries |
+| `dsh-sw-cad doctor` | report present/missing pieces, change nothing, exit 1 if something is missing |
+| `dsh-sw-cad where` | print every path the servers will use |
+| `dsh-sw-cad serve autocad\|solidworks` | run one MCP server over stdio; dsh calls this, you normally don't |
+
+`install` is idempotent. If you skip it, the first `serve` runs it once on demand — set
+`SW_CAD_NO_AUTO_INSTALL=1` to disable that and get a plain error instead.
+
+> [!TIP]
+> **Rather not run any of this yourself?** Paste the block below into dsh, Codex, or any agent that can
+> run commands on this machine. It carries everything the agent needs, so you can read the rest of this
+> section only if something goes wrong.
+
+```text
+Install https://github.com/27painter/dsh-sw-cad on this Windows machine.
+
+Run: npm install -g dsh-sw-cad && dsh-sw-cad install
+That installs the package, then the two upstream servers (AutoCAD MCP and the
+SolidWorks skill) plus the client entries. dsh-sw-cad install is idempotent and
+only touches what is missing.
+
+Do not run it elevated: it must run as the same Windows user as AutoCAD and
+SolidWorks. It writes nothing on C: except ~/.dsh and ~/.codex, and never touches
+the CAD installations or the registry.
+Then verify with: dsh-sw-cad doctor, dsh --profile headless --dump-config, codex mcp list.
+Report any step that fails instead of silently working around it.
+```
+
 ### Prerequisites
 
 - Windows 10/11 with AutoCAD and/or SolidWorks installed
 - Python ≥ 3.11 on PATH (`python --version`)
-- dsh (DeepSeek Harness) or Codex CLI; Node ≥ 20 for the plugin route
+- dsh (DeepSeek Harness) or Codex CLI; Node ≥ 20 for routes 1 and 2
 - Git — optional; the installer falls back to a codeload zip when git is blocked
 
 ### Version support
@@ -169,7 +189,7 @@ Upstream verifies against a single release but writes for a range. The honest pi
 Older versions are not refused — nothing checks a version number. They are simply outside what upstream
 verified, so start with one small job and look at the result before trusting a full drawing.
 
-### Route A — install upstream directly, then register it
+### Appendix — upstream's own install steps
 
 These are the upstream projects' own instructions. This is also what `install.ps1` automates, so read it if
 you want to understand or debug the install.
@@ -219,8 +239,8 @@ D:\cad-agents\venv-solidworks\Scripts\python.exe -m pip install -r D:\cad-agents
 D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\dsh-skills\solidworks-automation\scripts\cad_doctor.py
 ```
 
-**Optionally put the discovery shim in front of SolidWorks** (Route B does this for you). Without it the
-client carries all 66 tool schemas — 23,404 tokens — in every request:
+**Optionally put the discovery shim in front of SolidWorks** (every route above does this for you; these are
+the manual steps). Without it the client carries all 66 tool schemas — 23,404 tokens — in every request:
 
 ```powershell
 New-Item -ItemType Directory -Force -Path D:\cad-agents\mcp-shim | Out-Null
@@ -252,9 +272,9 @@ New-Item -ItemType Junction -Path "$env:USERPROFILE\.codex\skills\solidworks-aut
 New-Item -ItemType Junction -Path "$env:USERPROFILE\.codex\skills\autocad-mcp-pro"       -Target "D:\cad-agents\dsh-skills\autocad-mcp-pro"
 ```
 
-### Route B — one script (this repository)
+### Appendix — what `install.ps1` does
 
-`install.ps1` runs everything in Route A, plus the parts that are easy to get wrong: both venvs on the data
+`install.ps1` runs everything in the appendix above, plus the parts that are easy to get wrong: both venvs on the data
 drive, the junctions, the discovery-mode parameters, and a timestamped backup of `~/.dsh/cordis.patch.yml`.
 
 ```powershell
@@ -273,7 +293,7 @@ If you are not sure what is already on the machine, run `bootstrap.ps1` instead:
 `install.ps1` is needed at all.
 
 **Codex users still need one step** — append `codex-config.snippet.toml` to `~/.codex/config.toml` and
-junction the two skills into `~/.codex/skills/` (last four commands of Route A).
+junction the two skills into `~/.codex/skills/` (last four commands of the appendix above).
 
 > [!IMPORTANT]
 > **Start AutoCAD / SolidWorks first, as the same user.** COM automation crosses a process boundary that
