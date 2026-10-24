@@ -69,7 +69,7 @@ This matters more than usual here, because the two servers are other people's wo
 | SolidWorks skill + MCP server | [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill), cloned at install time | MIT |
 | `skills/autocad-mcp-pro/SKILL.md` | Authored here — upstream has no AutoCAD skill | MIT |
 | `mcp-shim/` (SolidWorks discovery shim + lexicon) | Authored here — upstream has no equivalent | MIT |
-| `install.ps1`, `cordis.patch.yml`, `codex-config.snippet.toml`, READMEs | Authored here | MIT |
+| `bin/`, `lib/`, `package.json`, `cordis.patch.yml`, `install.ps1`, `bootstrap.ps1`, `codex-config.snippet.toml`, `assets/`, READMEs | Authored here | MIT |
 
 **Nothing upstream is vendored.** The installer fetches the PyPI package and clones (or zip-downloads) the
 SolidWorks repository at install time, so you always get upstream's current code and upstream keeps
@@ -88,18 +88,46 @@ protocol.
 ```text
 Install https://github.com/27painter/dsh-sw-cad on this Windows machine.
 
-Clone it to D:\dsh-sw-cad and run bootstrap.ps1 there. It checks what is already
-present and installs only the missing parts (AutoCAD MCP, the SolidWorks skill,
-the discovery shim, the client configs).
+Run: npm install -g dsh-sw-cad && dsh-sw-cad install
+That installs the package, then the two upstream servers (AutoCAD MCP and the
+SolidWorks skill) plus the client entries. dsh-sw-cad install is idempotent and
+only touches what is missing.
+
 Do not run it elevated: it must run as the same Windows user as AutoCAD and
 SolidWorks. It writes nothing on C: except ~/.dsh and ~/.codex, and never touches
 the CAD installations or the registry.
+Then verify with: dsh-sw-cad doctor, dsh --profile headless --dump-config, codex mcp list.
 Report any step that fails instead of silently working around it.
 ```
 
-### One command: `bootstrap.ps1`
+### As a dsh plugin (recommended)
+
+```bash
+npm install -g dsh-sw-cad          # or: dsh plugin --profile web add dsh-sw-cad
+dsh-sw-cad install                 # upstream servers + client entries, once
+```
+
+The package declares `dsh.bundle.patch`, so `dsh plugin add` picks up its
+`cordis.patch.yml` and inserts two MCP client rows. Both rows call the `dsh-sw-cad`
+binary, which resolves every path it needs at runtime (its own location plus
+`~/.dsh/sw-cad.json`). That is why the patch contains no absolute path: the same
+bundle works on any machine.
+
+| Command | What it does |
+|---|---|
+| `dsh-sw-cad install` | install the upstream AutoCAD MCP and the SolidWorks skill, and write the client entries |
+| `dsh-sw-cad doctor` | report present/missing pieces, change nothing, exit 1 if something is missing |
+| `dsh-sw-cad where` | print every path the servers will use |
+| `dsh-sw-cad serve autocad\|solidworks` | run one MCP server over stdio; dsh calls this, you normally don't |
+
+`install` is idempotent. If you skip it, the first `serve` runs it once on demand — set
+`SW_CAD_NO_AUTO_INSTALL=1` to disable that and get a plain error instead.
+
+### Without npm: `bootstrap.ps1`
 
 ```powershell
+git clone https://github.com/27painter/dsh-sw-cad.git
+cd dsh-sw-cad
 .\bootstrap.ps1 -Check     # report only, changes nothing; exits 1 if something is missing
 .\bootstrap.ps1            # install whatever is missing
 ```
@@ -126,15 +154,8 @@ wrap in a script or hand to an agent. Nothing is downloaded unless a core piece 
 
 - Windows 10/11 with AutoCAD and/or SolidWorks installed
 - Python ≥ 3.11 on PATH (`python --version`)
-- dsh (DeepSeek Harness) or Codex CLI
+- dsh (DeepSeek Harness) or Codex CLI; Node ≥ 20 for the plugin route
 - Git — optional; the installer falls back to a codeload zip when git is blocked
-
-Get the repository first:
-
-```powershell
-git clone https://github.com/27painter/dsh-sw-cad.git
-cd dsh-sw-cad
-```
 
 ### Version support
 
@@ -212,11 +233,11 @@ D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\mcp-shim\sw_disco
 ```
 
 **Register both servers with your client.** dsh reads `~/.dsh/cordis.patch.yml` — copy this repository's
-`cordis.patch.yml` there and fix the paths. Codex reads `~/.codex/config.toml` — append
-`codex-config.snippet.toml`, or use upstream's own registrar
-(`mcp-server\register_codex_mcp.ps1 -Python <venv python> -InstallDependencies`). Both snippets already
-point at the shim; each file carries a commented-out block for the direct 66-tool server if you would
-rather have that.
+`cordis.patch.yml` there. It carries no absolute path: each row calls `dsh-sw-cad serve <target>`, so the
+only requirement is that the binary is on PATH (`npm install -g dsh-sw-cad`). Codex reads
+`~/.codex/config.toml` — append `codex-config.snippet.toml`, or use upstream's own registrar
+(`mcp-server\register_codex_mcp.ps1 -Python <venv python> -InstallDependencies`). The Codex snippet does
+contain absolute paths, so adjust those to your `-BaseDir`.
 
 **Make the skills visible.** Both clients only scan their own skills directory:
 
@@ -286,7 +307,10 @@ Practical notes, learned the hard way:
 
 ```powershell
 # everything present? read-only, exits 1 if something is missing
-.\bootstrap.ps1 -Check
+dsh-sw-cad doctor
+
+# every path the servers will use
+dsh-sw-cad where
 
 # dsh sees both servers and both skills
 pnpm dsh --profile headless --dump-config
@@ -295,23 +319,22 @@ pnpm dsh --profile headless "list available skills"
 # SolidWorks skill self-check (Python deps + COM)
 & "D:\cad-agents\venv-solidworks\Scripts\python.exe" "D:\cad-agents\dsh-skills\solidworks-automation\scripts\sw_preflight.py"
 
-# AutoCAD MCP starts and reports its version
-& "D:\cad-agents\venv-autocad\Scripts\autocad-mcp.exe" --help
-
-# SolidWorks shim: rebuild the catalogue and print the tool count
-& "D:\cad-agents\venv-solidworks\Scripts\python.exe" "D:\cad-agents\mcp-shim\sw_discovery_shim.py" `
-  --python "D:\cad-agents\venv-solidworks\Scripts\python.exe" `
-  --server "D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py" --build-catalog
+# both MCP servers answer a handshake through the same entry point dsh uses
+node bin\dsh-sw-cad.mjs serve solidworks     # expects solidworks-discovery, 2 tools
+node bin\dsh-sw-cad.mjs serve autocad        # expects AutoCAD MCP Pro, 2 tools
 
 # Codex
 codex mcp list
 ```
 
-What was verified before publishing: both MCP servers answer a JSON-RPC handshake (`autocad-mcp-pro`
-v1.6.0, `solidworks_mcp` v1.30.0); discovery mode advertises exactly two meta-tools and finds
-`gear_draw_spur_front_view` / `keyway_draw_keyed_bore` by keyword; `dsh --dump-config` loads both entries;
-the SolidWorks preflight passes. The shim was measured end to end on 36 Chinese and English queries:
-`tools/list` costs 256 tokens instead of 23,404, every query returned a correct top hit, and `call_tool`
+What was verified before publishing: both `serve` targets answer a JSON-RPC handshake through the
+package's own binary — the AutoCAD server reports `AutoCAD MCP Pro 3.4.11` (the pip package is 1.6.0, the
+server carries its own version), the shim reports `solidworks-discovery 1.0.0` behind upstream
+`solidworks_mcp` 1.30.0 — and each advertises exactly two meta-tools. Discovery finds
+`gear_draw_spur_front_view` / `keyway_draw_keyed_bore` by keyword; `dsh --dump-config` loads both rows
+with `command: dsh-sw-cad`; the SolidWorks preflight passes. The shim was measured end to end on 36
+Chinese and English queries: `tools/list` costs 256 tokens instead of 23,404, every query returned a
+correct top hit, and `call_tool`
 forwarded a live `solidworks_health_check` to a running SolidWorks 2026.
 
 ## Design notes

@@ -1,25 +1,30 @@
-# dsh-sw-cad -- copy into ~/.dsh/cordis.patch.yml, or let install.ps1 write it for you.
-# Two MCP servers: autocad (upstream discovery mode) and solidworks (our discovery shim).
-# Paths assume the default install root D:\cad-agents; change them if you used -BaseDir.
+# dsh-sw-cad bundle patch.
+#
+# Inserts two `@deepseek-ai/dsh-mcp-client` rows. Both spawn the `dsh-sw-cad`
+# binary that this package installs, which resolves every path it needs at
+# runtime (its own location plus ~/.dsh/sw-cad.json). That is why there is no
+# absolute path in this file: the same bundle works on any machine.
+#
+#   dsh-sw-cad serve autocad     -> upstream autocad-mcp-pro, DISCOVERY_MODE=search
+#   dsh-sw-cad serve solidworks  -> the discovery shim in front of the upstream
+#                                   SolidWorks server
+#
+# The binary must be resolvable on PATH. A global install (npm i -g dsh-sw-cad)
+# puts it there; with a profile-local install, run `dsh-sw-cad where` to print
+# the paths and override `command` in your own profile patch if needed.
+#
+# A later patch replaces a row's WHOLE `config` (it does not merge), so an
+# override must restate every key it relies on. The row ids are the stable
+# anchors for such overrides.
+
 - insert:
     - id: mcp-autocad
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: autocad
         transport: stdio
-        command: 'D:\cad-agents\venv-autocad\Scripts\autocad-mcp.exe'
-        args: []
-        env:
-          # auto: COM when AutoCAD is running, ezdxf headless otherwise
-          AUTOCAD_MCP_BACKEND: auto
-          # keep full/all: in discovery mode the catalog costs nothing at idle,
-          # narrowing it only hides tools (lean+core,mech drops gear_draw_*)
-          TOOL_PROFILE: full
-          TOOL_PACKS: 'all'
-          # 2 meta-tools advertised (~256 tokens); 242 tools searched on demand
-          DISCOVERY_MODE: search
-          # scope file access; the upstream default is unscoped
-          ALLOWED_PATHS: 'D:\AutoCad'
+        command: dsh-sw-cad
+        args: ['serve', 'autocad']
         # COM save/export/render can be slow
         toolCallTimeoutMs: 180000
         failOnStartupError: false
@@ -28,22 +33,15 @@
           initialDelayMs: 500
           maxDelayMs: 30000
           maxAttempts: 10
-- insert:
+
     - id: mcp-solidworks
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: solidworks
         transport: stdio
-        # the shim spawns the upstream server lazily, on the first call_tool
-        command: 'D:\cad-agents\venv-solidworks\Scripts\python.exe'
-        args:
-          - 'D:\cad-agents\mcp-shim\sw_discovery_shim.py'
-          - '--python'
-          - 'D:\cad-agents\venv-solidworks\Scripts\python.exe'
-          - '--server'
-          - 'D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py'
+        command: dsh-sw-cad
+        args: ['serve', 'solidworks']
         env:
-          # 2 meta-tools at idle (~256 tokens) instead of 66 tools (~23.4k)
           SW_SHIM_TOP_K: '8'
         # model rebuilds are slow; give them time
         toolCallTimeoutMs: 300000
@@ -53,22 +51,3 @@
           initialDelayMs: 500
           maxDelayMs: 30000
           maxAttempts: 10
-# To go back to the upstream 66-tool server (full catalog in every request),
-# replace the mcp-solidworks block above with this one:
-#
-#    - id: mcp-solidworks
-#      name: '@deepseek-ai/dsh-mcp-client'
-#      config:
-#        serverName: solidworks
-#        transport: stdio
-#        command: 'D:\cad-agents\venv-solidworks\Scripts\python.exe'
-#        args:
-#          - 'D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py'
-#        env: {}
-#        toolCallTimeoutMs: 300000
-#        failOnStartupError: false
-#        reconnect:
-#          enabled: true
-#          initialDelayMs: 500
-#          maxDelayMs: 30000
-#          maxAttempts: 10

@@ -30,6 +30,9 @@
   AutoCAD working directory, also the MCP ALLOWED_PATHS whitelist. Default: D:\AutoCad.
 .PARAMETER Check
   Report only, change nothing. Exit code 0 when everything is in place, 1 otherwise.
+.PARAMETER NoDshPatch
+  Do not read or rewrite ~/.dsh/cordis.patch.yml. Set this when the two MCP
+  servers are registered by the npm bundle patch (dsh plugin add) instead.
 .PARAMETER SkipCodex
   Ignore the Codex junctions and config.
 .PARAMETER Force
@@ -47,6 +50,7 @@ param(
     [string]$WorkDir = "D:\AutoCad",
     [switch]$Check,
     [switch]$SkipCodex,
+    [switch]$NoDshPatch,
     [switch]$Force
 )
 
@@ -212,14 +216,16 @@ function Invoke-Detect {
         Add-Item "light" "dsh-skills-junction" "MISSING" $Junction $null
     }
 
-    # 7. dsh config entries
-    $needDsh = @("mcp-autocad", "mcp-solidworks", "sw_discovery_shim.py")
-    $missDsh = @(Test-FileContains $PatchFile $needDsh)
-    if ($missDsh.Count -eq 0) {
-        Add-Item "light" "dsh-config" "OK" $PatchFile $null
-    }
-    else {
-        Add-Item "light" "dsh-config" "MISSING" ("absent: " + ($missDsh -join ", ")) $null
+    # 7. dsh config entries -- not checked when the npm bundle patch registers them
+    if (-not $NoDshPatch) {
+        $needDsh = @("mcp-autocad", "mcp-solidworks", "sw_discovery_shim.py")
+        $missDsh = @(Test-FileContains $PatchFile $needDsh)
+        if ($missDsh.Count -eq 0) {
+            Add-Item "light" "dsh-config" "OK" $PatchFile $null
+        }
+        else {
+            Add-Item "light" "dsh-config" "MISSING" ("absent: " + ($missDsh -join ", ")) $null
+        }
     }
 
     if ($SkipCodex) {
@@ -255,7 +261,7 @@ function Show-Items {
 
 function Invoke-Installer {
     if (-not (Test-Path -LiteralPath $Installer)) { throw "install.ps1 not found next to bootstrap.ps1" }
-    & $Installer -BaseDir $BaseDir -WorkDir $WorkDir -Python $Python -Force:$Force
+    & $Installer -BaseDir $BaseDir -WorkDir $WorkDir -Python $Python -Force:$Force -SkipDshPatch:$NoDshPatch
 }
 
 function Repair-Shim {

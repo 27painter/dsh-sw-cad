@@ -66,7 +66,7 @@
 | SolidWorks Skill + MCP 服务器 | [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill)，安装时克隆 | MIT |
 | `skills/autocad-mcp-pro/SKILL.md` | 本仓库原创——上游没有 AutoCAD skill | MIT |
 | `mcp-shim/`（SolidWorks discovery 垫片 + 词表） | 本仓库原创——上游没有等价机制 | MIT |
-| `install.ps1`、`cordis.patch.yml`、`codex-config.snippet.toml`、两份 README | 本仓库原创 | MIT |
+| `bin/`、`lib/`、`package.json`、`cordis.patch.yml`、`install.ps1`、`bootstrap.ps1`、`codex-config.snippet.toml`、`assets/`、两份 README | 本仓库原创 | MIT |
 
 **上游代码一行都没有进仓库。** 安装脚本在运行时才去 PyPI 取包、克隆（或 zip 下载）SolidWorks 仓库，所以
 你拿到的永远是上游当前版本，著作权也始终归上游。本仓库补的是它们缺失的那一层：经过验证的启动参数、
@@ -82,16 +82,42 @@ junction 技巧，以及一个在 git 协议被拦时还能装完的安装器。
 ```text
 在这台 Windows 机器上安装 https://github.com/27painter/dsh-sw-cad。
 
-克隆到 D:\dsh-sw-cad，在里面运行 bootstrap.ps1。它会先检查哪些已经装了，
-只补缺失的部分（AutoCAD MCP、SolidWorks skill、discovery 垫片、客户端配置）。
+运行：npm install -g dsh-sw-cad && dsh-sw-cad install
+第一条装包，第二条装两个上游服务器（AutoCAD MCP 与 SolidWorks skill）并写好客户端条目。
+dsh-sw-cad install 是幂等的，只补缺失的部分。
+
 不要提权运行：它必须和 AutoCAD、SolidWorks 是同一个 Windows 用户。
 除 ~/.dsh 与 ~/.codex 之外不要往 C 盘写东西，也不要动 CAD 安装目录和注册表。
+装完用 dsh-sw-cad doctor、dsh --profile headless --dump-config、codex mcp list 验证。
 哪一步失败就如实报告，不要自己绕过。
 ```
 
-### 一条命令：`bootstrap.ps1`
+### 作为 dsh 插件安装（推荐）
+
+```bash
+npm install -g dsh-sw-cad          # 或：dsh plugin --profile web add dsh-sw-cad
+dsh-sw-cad install                 # 装上游服务器与客户端条目，只跑一次
+```
+
+包里声明了 `dsh.bundle.patch`，所以 `dsh plugin add` 会读到它的 `cordis.patch.yml`，插入两条 MCP 客户端
+记录。两条记录调用的都是 `dsh-sw-cad` 这个命令，它在运行时自己解析全部路径（自身位置 + `~/.dsh/sw-cad.json`）。
+所以这个 patch 里一个绝对路径都没有，同一份包在任何机器上都成立。
+
+| 命令 | 作用 |
+|---|---|
+| `dsh-sw-cad install` | 装上游 AutoCAD MCP 与 SolidWorks skill，并写客户端条目 |
+| `dsh-sw-cad doctor` | 报告哪些有、哪些缺，不改动；缺东西时退出码 1 |
+| `dsh-sw-cad where` | 打印服务器会用到的每一条路径 |
+| `dsh-sw-cad serve autocad\|solidworks` | 以 stdio 跑一个 MCP 服务器；由 dsh 调用，一般不用手动执行 |
+
+`install` 是幂等的。不跑也行——第一次 `serve` 时会自动补一次；设 `SW_CAD_NO_AUTO_INSTALL=1` 可关掉这个行为，
+改成直接报错。
+
+### 不用 npm：`bootstrap.ps1`
 
 ```powershell
+git clone https://github.com/27painter/dsh-sw-cad.git
+cd dsh-sw-cad
 .\bootstrap.ps1 -Check     # 只检测，不改动；缺东西时退出码为 1
 .\bootstrap.ps1            # 缺什么装什么
 ```
@@ -201,10 +227,11 @@ D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\mcp-shim\sw_disco
   --server D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py --build-catalog
 ```
 
-**把两个服务器注册到客户端。** dsh 读 `~/.dsh/cordis.patch.yml`——把本仓库的 `cordis.patch.yml` 拷过去并按需改
-路径；Codex 读 `~/.codex/config.toml`——追加 `codex-config.snippet.toml`，或者用上游自带的注册脚本
-（`mcp-server\register_codex_mcp.ps1 -Python <venv 的 python> -InstallDependencies`）。两份配置都已经指向
-垫片；如果你更想要直连的 66 工具服务器，两个文件里都留了注释掉的备用块。
+**把两个服务器注册到客户端。** dsh 读 `~/.dsh/cordis.patch.yml`——把本仓库的 `cordis.patch.yml` 拷过去即可。
+它里面没有绝对路径：每条记录都调 `dsh-sw-cad serve <target>`，所以唯一的要求是这个命令在 PATH 上
+（`npm install -g dsh-sw-cad`）。Codex 读 `~/.codex/config.toml`——追加 `codex-config.snippet.toml`，或者用
+上游自带的注册脚本（`mcp-server\register_codex_mcp.ps1 -Python <venv 的 python> -InstallDependencies`）。
+Codex 那份里是绝对路径，要按你的 `-BaseDir` 改。
 
 **让 Skill 可见。** 两个客户端都只扫自己的技能目录：
 
@@ -270,7 +297,10 @@ ISO A3 图框带标题栏和尺寸标注，存到 D:\AutoCad 并导出 PDF。
 
 ```powershell
 # 该装的都装了吗？只读检测，缺东西时退出码 1
-.\bootstrap.ps1 -Check
+dsh-sw-cad doctor
+
+# 服务器会用到的每一条路径
+dsh-sw-cad where
 
 # dsh 是否看见两个服务器、两个技能
 pnpm dsh --profile headless --dump-config
@@ -279,21 +309,19 @@ pnpm dsh --profile headless "列出当前可用的 skill"
 # SolidWorks 技能自检（Python 依赖 + COM）
 & "D:\cad-agents\venv-solidworks\Scripts\python.exe" "D:\cad-agents\dsh-skills\solidworks-automation\scripts\sw_preflight.py"
 
-# AutoCAD MCP 能起来并报告版本
-& "D:\cad-agents\venv-autocad\Scripts\autocad-mcp.exe" --help
-
-# SolidWorks 垫片：重建目录并打印工具数
-& "D:\cad-agents\venv-solidworks\Scripts\python.exe" "D:\cad-agents\mcp-shim\sw_discovery_shim.py" `
-  --python "D:\cad-agents\venv-solidworks\Scripts\python.exe" `
-  --server "D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py" --build-catalog
+# 用 dsh 实际调用的同一个入口，验证两个服务器都能握手
+node bin\dsh-sw-cad.mjs serve solidworks     # 应为 solidworks-discovery，2 个工具
+node bin\dsh-sw-cad.mjs serve autocad        # 应为 AutoCAD MCP Pro，2 个工具
 
 # Codex
 codex mcp list
 ```
 
-发布前实际验证过的：两个 MCP 服务器都能完成 JSON-RPC 握手（`autocad-mcp-pro` v1.6.0、`solidworks_mcp`
-v1.30.0）；discovery 模式只广告两个元工具，且能按关键词检索到 `gear_draw_spur_front_view` /
-`keyway_draw_keyed_bore`；`dsh --dump-config` 两条注册都能加载；SolidWorks 自检通过。垫片做了端到端实测：
+发布前实际验证过的：两个 `serve` 目标都能通过包自带的入口完成 JSON-RPC 握手——AutoCAD 服务器自报
+`AutoCAD MCP Pro 3.4.11`（pip 包是 1.6.0，版本号在服务器侧是另一套），垫片自报 `solidworks-discovery
+1.0.0`，后面是上游 `solidworks_mcp` 1.30.0——两边都只广告两个元工具。discovery 能按关键词检索到
+`gear_draw_spur_front_view` / `keyway_draw_keyed_bore`；`dsh --dump-config` 两条记录都能加载且命令为
+`dsh-sw-cad`；SolidWorks 自检通过。垫片做了端到端实测：
 36 条中英文查询下 `tools/list` 是 256 token 而不是 23,404，每条查询的首位结果都正确，`call_tool` 把
 `solidworks_health_check` 转发给了真实运行的 SolidWorks 2026。
 

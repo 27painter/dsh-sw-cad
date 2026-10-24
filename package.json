@@ -1,0 +1,61 @@
+{
+  "name": "dsh-sw-cad",
+  "version": "0.1.0",
+  "description": "Drives the installed AutoCAD and SolidWorks desktop apps from dsh or Codex: two on-demand skills plus two MCP servers, with a discovery shim that keeps the SolidWorks tool catalog at 256 tokens instead of 23,404.",
+  "type": "module",
+  "license": "MIT",
+  "author": "27painter",
+  "homepage": "https://github.com/27painter/dsh-sw-cad",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/27painter/dsh-sw-cad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/27painter/dsh-sw-cad/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "mcp",
+    "autocad",
+    "solidworks",
+    "cad",
+    "com",
+    "windows",
+    "ai-agent"
+  ],
+  "bin": {
+    "dsh-sw-cad": "bin/dsh-sw-cad.mjs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "mcp-shim/",
+    "!mcp-shim/sw_catalog.json",
+    "skills/",
+    "docs/",
+    "assets/",
+    "cordis.patch.yml",
+    "bootstrap.ps1",
+    "install.ps1",
+    "codex-config.snippet.toml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "win32"
+  ],
+  "scripts": {
+    "check": "node bin/dsh-sw-cad.mjs doctor"
+  }
+}

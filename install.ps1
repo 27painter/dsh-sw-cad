@@ -35,7 +35,10 @@ param(
     [string]$Python = "python",
     [string]$BaseDir = "D:\cad-agents",
     [string]$WorkDir = "D:\AutoCad",
-    [switch]$Force
+    [switch]$Force,
+    # Skip rewriting ~/.dsh/cordis.patch.yml. Used when the servers are
+    # registered by the npm bundle patch (dsh plugin add) instead.
+    [switch]$SkipDshPatch
 )
 
 $ErrorActionPreference = "Stop"
@@ -198,7 +201,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $acadSkillDir "SKILL.md"))) {
 }
 
 # backup existing patch (even if it is just [])
-if (Test-Path -LiteralPath $PatchFile) {
+if ($SkipDshPatch) {
+    Write-Host "    skipping ~/.dsh/cordis.patch.yml (the bundle patch registers the servers)"
+}
+elseif (Test-Path -LiteralPath $PatchFile) {
     $bak = "$PatchFile.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     Copy-Item -LiteralPath $PatchFile -Destination $bak -Force
     Write-Host "    backup: $bak"
@@ -259,8 +265,10 @@ $patchContent = @"
           maxAttempts: 10
 "@
 # write UTF-8 without BOM (YAML parsers are happiest)
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($PatchFile, $patchContent, $utf8NoBom)
+if (-not $SkipDshPatch) {
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($PatchFile, $patchContent, $utf8NoBom)
+}
 
 # ---------- verify ----------
 $acadExe = Join-Path $VenvAcad "Scripts\autocad-mcp.exe"
@@ -269,7 +277,9 @@ $shimFile = Join-Path $ShimDir "sw_discovery_shim.py"
 $shimCatalog = Join-Path $ShimDir "sw_catalog.json"
 $skillVisible = Join-Path $Junction "solidworks-automation\SKILL.md"
 $acadSkillVisible = Join-Path $Junction "autocad-mcp-pro\SKILL.md"
-foreach ($f in @($acadExe, $swServer, $shimFile, $shimCatalog, $skillVisible, $acadSkillVisible, $PatchFile)) {
+$mustExist = @($acadExe, $swServer, $shimFile, $shimCatalog, $skillVisible, $acadSkillVisible)
+if (-not $SkipDshPatch) { $mustExist += $PatchFile }
+foreach ($f in $mustExist) {
     if (-not (Test-Path -LiteralPath $f)) { throw "verify failed, missing: $f" }
 }
 
