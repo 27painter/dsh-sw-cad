@@ -70,7 +70,7 @@ This matters more than usual here, because the two servers are other people's wo
 | SolidWorks skill + MCP server | [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill), cloned at install time | MIT |
 | `skills/autocad-mcp-pro/SKILL.md` | Authored here — upstream has no AutoCAD skill | MIT |
 | `mcp-shim/` (SolidWorks discovery shim + lexicon) | Authored here — upstream has no equivalent | MIT |
-| `bin/`, `lib/`, `package.json`, `cordis.patch.yml`, `install.ps1`, `bootstrap.ps1`, `codex-config.snippet.toml`, `assets/`, READMEs | Authored here | MIT |
+| `bin/`, `lib/` (including `probe.py`, which checks for the CAD COM servers), `package.json`, `cordis.patch.yml`, `install.ps1`, `bootstrap.ps1`, `codex-config.snippet.toml`, `assets/`, READMEs | Authored here | MIT |
 
 **Nothing upstream is vendored.** The installer fetches the PyPI package and clones (or zip-downloads) the
 SolidWorks repository at install time, so you always get upstream's current code and upstream keeps
@@ -176,6 +176,27 @@ Report any step that fails instead of silently working around it.
 - Python ≥ 3.11 on PATH (`python --version`)
 - dsh (DeepSeek Harness) or Codex CLI; Node ≥ 20 for routes 1 and 2
 - Git — optional; the installer falls back to a codeload zip when git is blocked
+
+### What if the CAD applications are not installed
+
+The plugin checks for both COM servers before registering anything (`lib/probe.py`, a registry
+ProgID lookup — it does not launch either application). A machine with only AutoCAD registers only
+the AutoCAD server, and vice versa; a machine with neither registers nothing and says so in the log
+instead of offering tools that could only fail.
+
+```
+[dsh-sw-cad] solidworks: no COM server registered on this machine, not registering it
+[dsh-sw-cad] registered autocad (base D://cad-agents, upstream pinned in lib/upstream.json)
+```
+
+`SW_CAD_DISABLE=autocad,solidworks` turns that decision into a setting, and
+`dsh-sw-cad doctor` prints what the probe found without starting dsh.
+
+Note that *installed* is not the same as *running*. AutoCAD registered but closed means the AutoCAD
+tools wait for the application and then fail with a message about a modal dialog; SolidWorks' own
+health check reports the install, not the running instance. Starting the CAD application as the same
+Windows user as your agent is the last step of any install.
+
 
 ### Version support
 

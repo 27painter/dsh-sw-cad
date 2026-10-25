@@ -67,7 +67,7 @@
 | SolidWorks Skill + MCP 服务器 | [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill)，安装时克隆 | MIT |
 | `skills/autocad-mcp-pro/SKILL.md` | 本仓库原创——上游没有 AutoCAD skill | MIT |
 | `mcp-shim/`（SolidWorks discovery 垫片 + 词表） | 本仓库原创——上游没有等价机制 | MIT |
-| `bin/`、`lib/`、`package.json`、`cordis.patch.yml`、`install.ps1`、`bootstrap.ps1`、`codex-config.snippet.toml`、`assets/`、两份 README | 本仓库原创 | MIT |
+| `bin/`、`lib/`（含探测 CAD COM 服务器的 `probe.py`）、`package.json`、`cordis.patch.yml`、`install.ps1`、`bootstrap.ps1`、`codex-config.snippet.toml`、`assets/`、两份 README | 本仓库原创 | MIT |
 
 **上游代码一行都没有进仓库。** 安装脚本在运行时才去 PyPI 取包、克隆（或 zip 下载）SolidWorks 仓库，所以
 你拿到的永远是上游当前版本，著作权也始终归上游。本仓库补的是它们缺失的那一层：经过验证的启动参数、
@@ -171,6 +171,25 @@ dsh-sw-cad install 是幂等的，只补缺失的部分。
 git clone https://github.com/27painter/dsh-sw-cad.git
 cd dsh-sw-cad
 ```
+
+### 机器上没装 CAD 应用会怎样
+
+注册之前插件会先查两个 COM 服务器（`lib/probe.py`，查注册表 ProgID，不会启动任何一个应用）。
+只装了 AutoCAD 就只注册 AutoCAD 那一行，只装了 SolidWorks 就只注册那一行；两个都没装就一行都
+不注册，并在日志里说明——而不是放两个只能失败的工具在那里。
+
+```
+[dsh-sw-cad] solidworks: no COM server registered on this machine, not registering it
+[dsh-sw-cad] registered autocad (base D://cad-agents, upstream pinned in lib/upstream.json)
+```
+
+`SW_CAD_DISABLE=autocad,solidworks` 可以把这个判断改成显式设置，`dsh-sw-cad doctor` 会在不启动
+dsh 的情况下打印探测结果。
+
+另外，**装过**不等于**开着**。AutoCAD 注册过但没启动，工具会一直等应用响应，最后报一条“可能有模态
+对话框”的错；SolidWorks 的 health_check 报的是装没装，不是开没开。所以把 CAD 应用以与 agent 同一个
+Windows 用户启动，是安装之后最后要做的一步。
+
 
 ### 版本支持
 

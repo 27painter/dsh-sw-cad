@@ -182,6 +182,26 @@ function cmdDoctor() {
   const layout = resolveLayout();
   log(`package  ${PKG_ROOT} (v${PKG.version})`);
   log(`pinned   autocad-mcp-pro ${PINS.autocadMcp.version}, solidworks skill ${PINS.solidworksSkill.commit.slice(0, 12)}`);
+
+  // Which sides actually have a CAD application to drive. Only these get
+  // registered; a side with no COM server registered is skipped on purpose.
+  const probe = path.join(PKG_ROOT, "lib", "probe.py");
+  if (exists(probe)) {
+    const py = exists(layout.pySw) ? layout.pySw : layout.python;
+    const r = spawnSync(py, [probe], { encoding: "utf8", timeout: 20000 });
+    let cad = null;
+    try {
+      cad = JSON.parse(r.stdout.trim().split("\n").pop());
+    } catch {}
+    if (cad) {
+      log(`cad apps  autocad: ${cad.autocad ? "registered" : "not found"}, solidworks: ${cad.solidworks ? "registered" : "not found"}`);
+      if (!cad.autocad && !cad.solidworks) {
+        log(`          neither is installed; the plugin will not register any MCP row`);
+      }
+    } else {
+      log(`cad apps  probe failed`);
+    }
+  }
   log(`config   ${exists(CONFIG_FILE) ? CONFIG_FILE : "(none yet)"}`);
   const res = runInstaller(layout, { check: true, force: false });
   process.exit(res.status === 0 ? 0 : 1);
