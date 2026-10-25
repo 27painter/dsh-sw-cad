@@ -1,53 +1,19 @@
 # dsh-sw-cad bundle patch.
 #
-# Inserts two `@deepseek-ai/dsh-mcp-client` rows. Both spawn the `dsh-sw-cad`
-# binary that this package installs, which resolves every path it needs at
-# runtime (its own location plus ~/.dsh/sw-cad.json). That is why there is no
-# absolute path in this file: the same bundle works on any machine.
+# Inserts one row: this package itself. It is a real cordis plugin (lib/index.js),
+# not a wrapper around a binary, so dsh imports it by name from the profile and
+# nothing has to be on PATH.
 #
-#   dsh-sw-cad serve autocad     -> upstream autocad-mcp-pro, DISCOVERY_MODE=search
-#   dsh-sw-cad serve solidworks  -> the discovery shim in front of the upstream
-#                                   SolidWorks server
+# On load the plugin resolves its own paths, makes sure the pinned upstream
+# servers are installed (installing them once if they are not), and registers two
+# @deepseek-ai/dsh-mcp-client rows with absolute paths:
 #
-# The binary must be resolvable on PATH. A global install (npm i -g dsh-sw-cad)
-# puts it there; with a profile-local install, run `dsh-sw-cad where` to print
-# the paths and override `command` in your own profile patch if needed.
+#   autocad     -> autocad-mcp-pro 1.6.0, DISCOVERY_MODE=search
+#   solidworks  -> the discovery shim in front of upstream's 66-tool server
 #
-# A later patch replaces a row's WHOLE `config` (it does not merge), so an
-# override must restate every key it relies on. The row ids are the stable
-# anchors for such overrides.
+# Versions are pinned in lib/upstream.json. If the upstream cannot be installed
+# the plugin throws instead of registering rows that would fail silently.
 
 - insert:
-    - id: mcp-autocad
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: autocad
-        transport: stdio
-        command: dsh-sw-cad
-        args: ['serve', 'autocad']
-        # COM save/export/render can be slow
-        toolCallTimeoutMs: 180000
-        failOnStartupError: false
-        reconnect:
-          enabled: true
-          initialDelayMs: 500
-          maxDelayMs: 30000
-          maxAttempts: 10
-
-    - id: mcp-solidworks
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: solidworks
-        transport: stdio
-        command: dsh-sw-cad
-        args: ['serve', 'solidworks']
-        env:
-          SW_SHIM_TOP_K: '8'
-        # model rebuilds are slow; give them time
-        toolCallTimeoutMs: 300000
-        failOnStartupError: false
-        reconnect:
-          enabled: true
-          initialDelayMs: 500
-          maxDelayMs: 30000
-          maxAttempts: 10
+    - id: dsh-sw-cad
+      name: 'dsh-sw-cad'

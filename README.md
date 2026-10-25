@@ -36,16 +36,16 @@ Two MCP servers are the muscle, registered in the client config:
 
 | Server | Tools advertised | Idle cost | Mode |
 |---|---:|---:|---|
-| `autocad` | 2 | ~356 tokens | Upstream `DISCOVERY_MODE=search`: only `search_tools` + `call_tool`; the 242-tool catalog is searched by keyword |
+| `autocad` | 2 | 365 tokens | Upstream `DISCOVERY_MODE=search`: only `search_tools` + `call_tool`; the 242-tool catalog is searched by keyword |
 | `solidworks` | 2 | 256 tokens | `mcp-shim/` from this repository in front of upstream's 66-tool server (50 `solidworks_*` + 14 `cadstudio_*` + 2 `design_*`), which would otherwise cost 23,404 |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/token-cost-dark.svg">
-  <img alt="Bar chart of idle context cost: AutoCAD direct 83,717 tokens, SolidWorks direct 23,404, both together 107,121, this kit 612" src="docs/token-cost-light.svg">
+  <img alt="Bar chart of idle context cost: AutoCAD direct 83,732 tokens, SolidWorks direct 23,404, both together 107,136, this kit 621" src="docs/token-cost-light.svg">
 </picture>
 
-*Tool schemas are paid for before the first request. Connected directly the two servers cost 107,121
-tokens; through this kit they cost 612, a 99.4% cut. Reproduce with `mcp-shim/verify_shim.py`.*
+*Tool schemas are paid for before the first request. Connected directly the two servers cost 107,136
+tokens; through this kit they cost 621, a 99.4% cut. Reproduce with `mcp-shim/verify_shim.py`.*
 
 ```
 you speak natural language
@@ -83,33 +83,32 @@ protocol.
 
 Three ways in. Pick one, then check the prerequisites at the end of this section.
 
-### 1. npm, global (recommended)
+### 1. As a dsh plugin (recommended)
+
+```bash
+dsh plugin --profile web add dsh-sw-cad
+```
+
+That is the whole install. `package.json` declares `dsh.bundle.patch`, so dsh picks up this
+repository's `cordis.patch.yml`, which inserts one row: this package. The package is a real cordis
+plugin (`lib/index.js`), not a wrapper around a binary, so dsh imports it from the profile and
+nothing has to be on PATH.
+
+On first load the plugin resolves its own paths, installs the pinned upstream servers if they are
+missing (a few minutes, once), and then registers the two MCP clients with absolute paths. If the
+install cannot succeed it throws with the failing path and the command to re-run, instead of
+registering rows that would fail silently. `SW_CAD_NO_AUTO_INSTALL=1` turns the automatic install off
+and surfaces the missing pieces as an error instead.
+
+### 2. npm, global (adds the CLI)
 
 ```bash
 npm install -g dsh-sw-cad
 dsh-sw-cad install
 ```
 
-Two commands: the first puts the binary on PATH, the second installs the two upstream servers (the
-AutoCAD MCP and the SolidWorks skill) and writes the client entries. `install` is idempotent and only
-touches what is missing.
-
-### 2. As a dsh plugin
-
-```bash
-dsh plugin --profile web add dsh-sw-cad
-dsh-sw-cad install
-```
-
-The package declares `dsh.bundle.patch`, so `dsh plugin add` picks up its `cordis.patch.yml` and inserts
-two MCP client rows. Both rows call the `dsh-sw-cad` binary, which resolves every path it needs at runtime
-(its own location plus `~/.dsh/sw-cad.json`) — that is why the patch contains no absolute path and the
-same bundle works on any machine.
-
-> [!WARNING]
-> The binary has to be on PATH for those two rows to start. `dsh plugin add` installs into the profile,
-> and dsh does not put that profile's `node_modules/.bin` on PATH. Either also run step 1, or point
-> `command` at the absolute path that `dsh-sw-cad where` prints.
+Same result, plus `dsh-sw-cad` on PATH for `doctor`, `where` and `serve` — useful when you want to
+check the install without booting dsh.
 
 ### 3. Without npm: `bootstrap.ps1`
 
@@ -142,13 +141,14 @@ wrap in a script or hand to an agent. Nothing is downloaded unless a core piece 
 
 | Command | What it does |
 |---|---|
-| `dsh-sw-cad install` | install the upstream AutoCAD MCP and the SolidWorks skill, and write the client entries |
-| `dsh-sw-cad doctor` | report present/missing pieces, change nothing, exit 1 if something is missing |
+| `dsh-sw-cad install` | install the pinned upstream servers and write `~/.dsh/sw-cad.json` |
+| `dsh-sw-cad doctor` | report present/missing pieces and the pinned versions, change nothing, exit 1 if something is missing |
 | `dsh-sw-cad where` | print every path the servers will use |
-| `dsh-sw-cad serve autocad\|solidworks` | run one MCP server over stdio; dsh calls this, you normally don't |
+| `dsh-sw-cad serve autocad\|solidworks` | run one MCP server over stdio, for manual testing |
 
-`install` is idempotent. If you skip it, the first `serve` runs it once on demand — set
-`SW_CAD_NO_AUTO_INSTALL=1` to disable that and get a plain error instead.
+`install` is idempotent, and the plugin runs it for you on first load. Versions are pinned in
+`lib/upstream.json` — `autocad-mcp-pro` 1.6.0 and one SolidWorks skill commit — so a machine that
+installs today and one that installs next month get the same servers.
 
 > [!TIP]
 > **Rather not run any of this yourself?** Paste the block below into dsh, Codex, or any agent that can
@@ -359,8 +359,8 @@ forwarded a live `solidworks_health_check` to a running SolidWorks 2026.
 
 ## Design notes
 
-**1. Discovery mode is the whole trick.** 242 tool schemas cost ~84k tokens if advertised. In discovery
-mode the client sees two tools (~356 tokens) and searches a catalog that carries 206 AutoCAD command names
+**1. Discovery mode is the whole trick.** 242 tool schemas cost 83,732 tokens if advertised. In discovery
+mode the client sees two tools (365 tokens) and searches a catalog that carries 206 AutoCAD command names
 plus 1439 synonyms — say "chamfer" and it finds `FILLET`.
 
 **2. SolidWorks needed the same trick, so the shim exists.** Upstream's server registers all 66 tools
@@ -387,6 +387,17 @@ says to set it. This kit sets it to a working directory.
 call. For a single "draw a box" that is slower than calling the upstream tool directly, and the shim's
 catalogue can go stale if the upstream skill is updated without `--build-catalog`. It is the right trade
 when a session makes several calls, which is the normal case for CAD work.
+
+**8. It ships as a plugin, not as a bin the patch calls.** The first version registered two MCP client
+rows whose `command` was `dsh-sw-cad`, which only resolves when the package is installed globally — so
+`dsh plugin add` on its own left two rows that could not start. A reviewer caught that, correctly.
+`lib/index.js` now imports as a cordis plugin and registers the two clients itself with absolute
+paths, which removes the PATH dependency and lets it check the upstream before registering anything.
+
+**9. Pinned, because "latest" is not a version.** `lib/upstream.json` records the exact
+`autocad-mcp-pro` release and the exact SolidWorks skill commit this bundle was validated against;
+`install.ps1` uses them for both the pip install and the archive download. Bumping them is a
+deliberate commit, and the shim catalogue has to be rebuilt when you do.
 
 ## Troubleshooting
 

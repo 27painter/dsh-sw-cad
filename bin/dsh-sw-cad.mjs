@@ -25,6 +25,8 @@ import {
   writeConfig,
 } from "../lib/paths.mjs";
 
+const PINS = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, "lib", "upstream.json"), "utf8"));
+
 const HELP = `dsh-sw-cad ${PKG.version}
 
   serve <autocad|solidworks>   run one MCP server over stdio (called by dsh)
@@ -65,6 +67,8 @@ function runInstaller(layout, { check, force, dshPatch = false }) {
     "-BaseDir", layout.baseDir,
     "-WorkDir", layout.workDir,
     "-Python", layout.python,
+    "-AutocadVersion", PINS.autocadMcp.version,
+    "-SkillRef", PINS.solidworksSkill.commit,
   ];
   if (check) args.push("-Check");
   if (force) args.push("-Force");
@@ -177,6 +181,7 @@ function cmdInstall(argv) {
 function cmdDoctor() {
   const layout = resolveLayout();
   log(`package  ${PKG_ROOT} (v${PKG.version})`);
+  log(`pinned   autocad-mcp-pro ${PINS.autocadMcp.version}, solidworks skill ${PINS.solidworksSkill.commit.slice(0, 12)}`);
   log(`config   ${exists(CONFIG_FILE) ? CONFIG_FILE : "(none yet)"}`);
   const res = runInstaller(layout, { check: true, force: false });
   process.exit(res.status === 0 ? 0 : 1);

@@ -51,7 +51,9 @@ param(
     [switch]$Check,
     [switch]$SkipCodex,
     [switch]$NoDshPatch,
-    [switch]$Force
+    [switch]$Force,
+    [string]$AutocadVersion = "1.6.0",
+    [string]$SkillRef = "f9d6efbecf297bcdfffc451de81ba3a7bdea6a0d"
 )
 
 $ErrorActionPreference = "Stop"
@@ -261,7 +263,7 @@ function Show-Items {
 
 function Invoke-Installer {
     if (-not (Test-Path -LiteralPath $Installer)) { throw "install.ps1 not found next to bootstrap.ps1" }
-    & $Installer -BaseDir $BaseDir -WorkDir $WorkDir -Python $Python -Force:$Force -SkipDshPatch:$NoDshPatch
+    & $Installer -BaseDir $BaseDir -WorkDir $WorkDir -Python $Python -Force:$Force -SkipDshPatch:$NoDshPatch -AutocadVersion $AutocadVersion -SkillRef $SkillRef
 }
 
 function Repair-Shim {

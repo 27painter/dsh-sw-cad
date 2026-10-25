@@ -1,6 +1,6 @@
 {
   "name": "dsh-sw-cad",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Drives the installed AutoCAD and SolidWorks desktop apps from dsh or Codex: two on-demand skills plus two MCP servers, with a discovery shim that keeps the SolidWorks tool catalog at 256 tokens instead of 23,404.",
   "type": "module",
   "license": "MIT",
@@ -27,6 +27,15 @@
   ],
   "bin": {
     "dsh-sw-cad": "bin/dsh-sw-cad.mjs"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./lib/*": "./lib/*",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-mcp-client": ">=0.2.0-rc.1 <0.3.0-0"
   },
   "files": [
     "bin/",

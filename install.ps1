@@ -38,7 +38,11 @@ param(
     [switch]$Force,
     # Skip rewriting ~/.dsh/cordis.patch.yml. Used when the servers are
     # registered by the npm bundle patch (dsh plugin add) instead.
-    [switch]$SkipDshPatch
+    [switch]$SkipDshPatch,
+    # Pinned upstream versions. Defaults match lib/upstream.json, which is the
+    # pair this bundle was validated against; changing them is deliberate.
+    [string]$AutocadVersion = "1.6.0",
+    [string]$SkillRef = "f9d6efbecf297bcdfffc451de81ba3a7bdea6a0d"
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,7 +54,7 @@ $SkillsDir = Join-Path $BaseDir "dsh-skills"                    # physical locat
 $SkillDest = Join-Path $SkillsDir "solidworks-automation"       # dir name == frontmatter name
 $ShimDir   = Join-Path $BaseDir "mcp-shim"                      # discovery shim for SolidWorks
 $SkillRepo = "https://github.com/wzyn20051216/solidworks-automation-skill.git"
-$SkillZip  = "https://codeload.github.com/wzyn20051216/solidworks-automation-skill/zip/refs/heads/main"
+$SkillZip  = "https://codeload.github.com/wzyn20051216/solidworks-automation-skill/zip/$SkillRef"
 $Junction  = Join-Path $env:USERPROFILE ".dsh\skills"          # logical path dsh scans
 $DshHome   = Join-Path $env:USERPROFILE ".dsh"
 $PatchFile = Join-Path $DshHome "cordis.patch.yml"
@@ -102,45 +106,33 @@ else {
     Write-Host "    junction created"
 }
 
-# ---------- 5. SolidWorks skill ----------
-Say "[5/8] Cloning SolidWorks skill to $SkillDest ..."
+# ---------- 5. SolidWorks skill (pinned) ----------
+Say "[5/8] Fetching SolidWorks skill at $SkillRef ..."
 if ((Test-Path -LiteralPath $SkillDest) -and $Force) { Remove-Item -Recurse -Force -LiteralPath $SkillDest }
 if (-not (Test-Path -LiteralPath $SkillDest)) {
-    $hasGit = [bool](Get-Command git -ErrorAction SilentlyContinue)
-    $cloned = $false
-    if ($hasGit) {
-        & git clone --depth 1 $SkillRepo $SkillDest 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            $cloned = $true
-        }
-        else {
-            # sandbox/proxy often blocks github.com git traffic; fall back to zip
-            Write-Host "    git clone failed (proxy/network), falling back to zip download..."
-            if (Test-Path -LiteralPath $SkillDest) { Remove-Item -Recurse -Force -LiteralPath $SkillDest }
-        }
+    # Always the archive of the pinned ref: no git needed, and the result is the
+    # same commit on every machine. A branch name works too (GitHub redirects).
+    $tmp = Join-Path $env:TEMP "sw-skill.zip"
+    $expand = Join-Path $env:TEMP "sw-skill-extract"
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        & curl.exe -sL -o $tmp $SkillZip
+        if ($LASTEXITCODE -ne 0) { throw "skill archive download failed: $SkillZip" }
     }
-    if (-not $cloned) {
-        $tmp = Join-Path $env:TEMP "sw-skill.zip"
-        $expand = Join-Path $env:TEMP "sw-skill-extract"
-        $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-        if ($curl) {
-            & curl.exe -sL -o $tmp $SkillZip
-            if ($LASTEXITCODE -ne 0) { throw "zip download via curl.exe failed" }
-        }
-        else {
-            Invoke-WebRequest -Uri $SkillZip -OutFile $tmp -UseBasicParsing
-        }
-        if (Test-Path $expand) { Remove-Item -Recurse -Force $expand }
-        Expand-Archive -Path $tmp -Destination $expand -Force
-        $inner = Join-Path $expand "solidworks-automation-skill-main"
-        if (-not (Test-Path -LiteralPath $inner)) { throw "unexpected zip layout: $inner" }
-        Move-Item -LiteralPath $inner -Destination $SkillDest
-        Remove-Item -Recurse -Force $expand
-        Remove-Item -Force $tmp
+    else {
+        Invoke-WebRequest -Uri $SkillZip -OutFile $tmp -UseBasicParsing
     }
+    if (Test-Path $expand) { Remove-Item -Recurse -Force $expand }
+    Expand-Archive -Path $tmp -Destination $expand -Force
+    $inner = Get-ChildItem -LiteralPath $expand -Directory | Select-Object -First 1
+    if (-not $inner) { throw "unexpected zip layout in $expand" }
+    Move-Item -LiteralPath $inner.FullName -Destination $SkillDest
+    Remove-Item -Recurse -Force $expand
+    Remove-Item -Force $tmp
+    Write-Host "    extracted to $SkillDest"
 }
 else {
-    Write-Host "    skill already present, skipping (use -Force to re-clone)"
+    Write-Host "    skill already present, skipping (use -Force to re-fetch)"
 }
 
 # ---------- 6. Python packages ----------
@@ -148,8 +140,8 @@ Say "[6/8] Installing Python packages (pip cache -> D:\pip_cache)..."
 $pyAcad = Join-Path $VenvAcad "Scripts\python.exe"
 $pySw   = Join-Path $VenvSw   "Scripts\python.exe"
 
-& $pyAcad -m pip install "autocad-mcp-pro[full]" --quiet
-if ($LASTEXITCODE -ne 0) { throw "pip install autocad-mcp-pro[full] failed" }
+& $pyAcad -m pip install "autocad-mcp-pro[full]==$AutocadVersion" --quiet
+if ($LASTEXITCODE -ne 0) { throw "pip install autocad-mcp-pro[full]==$AutocadVersion failed" }
 
 $swReq = Join-Path $SkillDest "mcp-server\requirements.txt"
 if (-not (Test-Path -LiteralPath $swReq)) { throw "requirements not found: $swReq" }

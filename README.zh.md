@@ -33,15 +33,15 @@
 
 | 服务器 | 广告工具数 | 空闲成本 | 模式 |
 |---|---:|---:|---|
-| `autocad` | 2 | 约 356 token | 上游自带 `DISCOVERY_MODE=search`：只广告 `search_tools` + `call_tool`，242 个工具的目录按关键词检索 |
+| `autocad` | 2 | 365 token | 上游自带 `DISCOVERY_MODE=search`：只广告 `search_tools` + `call_tool`，242 个工具的目录按关键词检索 |
 | `solidworks` | 2 | 256 token | 本仓库的 `mcp-shim/` 挡在上游 66 工具服务器前面（50 个 `solidworks_*` + 14 个 `cadstudio_*` + 2 个 `design_*`），后者全量广告要 23,404 token |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/token-cost-dark.svg">
-  <img alt="常驻上下文成本柱状图：AutoCAD 直连 83,717 token，SolidWorks 直连 23,404，两个都直连 107,121，本仓库配置 612" src="docs/token-cost-light.svg">
+  <img alt="常驻上下文成本柱状图：AutoCAD 直连 83,732 token，SolidWorks 直连 23,404，两个都直连 107,136，本仓库配置 621" src="docs/token-cost-light.svg">
 </picture>
 
-*工具定义是在你提出第一个请求之前就要付掉的。两台服务器直连要 107,121 token，走本仓库这套配置是 612，
+*工具定义是在你提出第一个请求之前就要付掉的。两台服务器直连要 107,136 token，走本仓库这套配置是 621，
 省 99.4%。数字可用 `mcp-shim/verify_shim.py` 复现。*
 
 ```
@@ -78,31 +78,29 @@ junction 技巧，以及一个在 git 协议被拦时还能装完的安装器。
 
 三条路，挑一条。装之前先看本节末尾的前置条件。
 
-### 1. npm 全局安装（推荐）
+### 1. 作为 dsh 插件安装（推荐）
+
+```bash
+dsh plugin --profile web add dsh-sw-cad
+```
+
+这就是全部。`package.json` 里声明了 `dsh.bundle.patch`，dsh 会读到本仓库的 `cordis.patch.yml`，
+它只插入一行：这个包本身。包是一个真正的 cordis 插件（`lib/index.js`），不是包着一个可执行文件的壳，
+所以 dsh 直接从 profile 里 import 它，不需要任何东西在 PATH 上。
+
+首次加载时插件会自己解析路径，缺上游就把**钉死版本**的上游装好（几分钟，只一次），然后注册两个 MCP
+客户端（绝对路径）。装不上就直接抛错，带上缺失的路径和重跑的命令——而不是注册两行起不来的配置，
+让人以为装好了却没有工具。设 `SW_CAD_NO_AUTO_INSTALL=1` 可以关掉自动安装，把缺失项变成一条明确的报错。
+
+### 2. npm 全局安装（附带 CLI）
 
 ```bash
 npm install -g dsh-sw-cad
 dsh-sw-cad install
 ```
 
-两条命令：第一条把可执行文件放进 PATH，第二条装两个上游服务器（AutoCAD MCP 与 SolidWorks skill）
-并写好客户端条目。`install` 是幂等的，只补缺失的部分。
-
-### 2. 作为 dsh 插件安装
-
-```bash
-dsh plugin --profile web add dsh-sw-cad
-dsh-sw-cad install
-```
-
-包里声明了 `dsh.bundle.patch`，所以 `dsh plugin add` 会读到它的 `cordis.patch.yml`，插入两条 MCP 客户端
-记录。两条记录调用的都是 `dsh-sw-cad` 这个命令，它在运行时自己解析全部路径（自身位置 + `~/.dsh/sw-cad.json`）
-——所以这个 patch 里一个绝对路径都没有，同一份包在任何机器上都成立。
-
-> [!WARNING]
-> 这两条记录要能启动，`dsh-sw-cad` 必须在 PATH 上。`dsh plugin add` 是装进 profile 的，而 dsh 不会把
-> profile 的 `node_modules/.bin` 加进 PATH。所以要么把第 1 步也做一遍，要么把 `command` 改成
-> `dsh-sw-cad where` 打印出来的绝对路径。
+结果一样，额外把 `dsh-sw-cad` 放进 PATH，可以用 `doctor`、`where`、`serve`——不想启动 dsh 就想先查一下
+装没装好时有用。
 
 ### 3. 不用 npm：`bootstrap.ps1`
 
@@ -135,13 +133,13 @@ cd dsh-sw-cad
 
 | 命令 | 作用 |
 |---|---|
-| `dsh-sw-cad install` | 装上游 AutoCAD MCP 与 SolidWorks skill，并写客户端条目 |
-| `dsh-sw-cad doctor` | 报告哪些有、哪些缺，不改动；缺东西时退出码 1 |
+| `dsh-sw-cad install` | 装钉死版本的上游服务器，并写 `~/.dsh/sw-cad.json` |
+| `dsh-sw-cad doctor` | 报告哪些有、哪些缺，并打印钉死的版本；不改动，缺东西时退出码 1 |
 | `dsh-sw-cad where` | 打印服务器会用到的每一条路径 |
-| `dsh-sw-cad serve autocad\|solidworks` | 以 stdio 跑一个 MCP 服务器；由 dsh 调用，一般不用手动执行 |
+| `dsh-sw-cad serve autocad\|solidworks` | 以 stdio 跑一个 MCP 服务器，用于手动测试 |
 
-`install` 是幂等的。不跑也行——第一次 `serve` 时会自动补一次；设 `SW_CAD_NO_AUTO_INSTALL=1` 可关掉这个行为，
-改成直接报错。
+`install` 是幂等的，而且插件首次加载时会自动跑一遍。版本钉在 `lib/upstream.json`——`autocad-mcp-pro` 1.6.0
+加一个固定的 SolidWorks skill 提交——所以今天装和一个月后装，拿到的是同一套服务器。
 
 > [!TIP]
 > **不想自己敲这些命令？** 把下面这段发给你的 agent（dsh、Codex，或任何能在这台机器上跑命令的 agent），
@@ -348,7 +346,7 @@ codex mcp list
 ## 设计说明
 
 **1. discovery 模式是这套配置的核心。** 242 个工具定义全量广告约 8.4 万 token。discovery 模式下客户端只看到
-两个工具（约 356 token），检索目录里带 206 个 AutoCAD 命令名 + 1439 个同义词——说"倒角"能找到 `FILLET`。
+两个工具（365 token），检索目录里带 206 个 AutoCAD 命令名 + 1439 个同义词——说"倒角"能找到 `FILLET`。
 
 **2. SolidWorks 也需要同一招，所以有了垫片。** 上游服务器无条件注册全部 66 个工具，实测在线上就是 23,404
 token，还没问任何问题就先付掉了。垫片只广告 `search_tools` + `call_tool`（256 token），检索走缓存目录，
@@ -371,6 +369,15 @@ token，还没问任何问题就先付掉了。垫片只广告 `search_tools` + 
 
 **7. discovery 不是免费，只是延后。** 每次调用多一个来回：先搜再调。只画一个方块时它比直连慢，而且上游
 skill 更新后没重建目录，检索结果会过期。但 CAD 任务通常一次会话里要调好几个工具，这笔账是划算的。
+
+**8. 它是插件，不是 patch 调一个可执行文件。** 第一版注册的两行 MCP 客户端，`command` 写的是
+`dsh-sw-cad`——只有全局安装过才解析得到，于是单独跑 `dsh plugin add` 会留下两行起不来的配置。评审指出
+了这一点，指得对。现在 `lib/index.js` 本身就是一个 cordis 插件，由它自己用绝对路径注册两个客户端，
+PATH 依赖没了，也才有可能在注册之前先检查上游。
+
+**9. 钉死版本，因为"最新"不是一个版本号。** `lib/upstream.json` 记录了这套配置验证时的确切
+`autocad-mcp-pro` 版本和确切的 SolidWorks skill 提交；`install.ps1` 的 pip 安装和压缩包下载都用它。
+改它就是一次刻意的提交，而且改完要重建垫片目录。
 
 ## 排障
 
