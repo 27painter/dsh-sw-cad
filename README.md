@@ -338,6 +338,10 @@ bolt circle. Save as SLDPRT and export STEP.
 
 Practical notes, learned the hard way:
 
+- **SolidWorks tools nest their arguments.** The upstream tools take their payload under a `params` key,
+  so a call looks like `call_tool(name="solidworks_sketch_and_extrude", arguments={"params": {"shape":
+  "rectangle", "width_mm": 60, "height_mm": 40, "depth_mm": 10}})`. AutoCAD tools take theirs flat.
+  Getting this wrong fails with a pydantic message about a missing `params` field, which is the hint.
 - **Say one CAD at a time.** Mentioning both loads both skills and mixes the task.
 - **Ask for a plan first on anything complex.** Both skills have a planning step; approving a plan before
   geometry is drawn is cheaper than undoing a bad drawing.

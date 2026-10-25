@@ -325,6 +325,10 @@ ISO A3 图框带标题栏和尺寸标注，存到 D:\AutoCad 并导出 PDF。
 
 几条踩过坑的经验：
 
+- **SolidWorks 的工具参数要多套一层。** 上游工具把参数放在 `params` 键下面，所以调用长这样：
+  `call_tool(name="solidworks_sketch_and_extrude", arguments={"params": {"shape": "rectangle",
+  "width_mm": 60, "height_mm": 40, "depth_mm": 10}})`。AutoCAD 的工具是平铺的。写错了会报
+  pydantic 的 `params Field required`，看到那个就知道是这回事。
 - **一次只说一个 CAD。** 同时提两个会加载两个 Skill，任务也容易混。
 - **复杂任务先要计划。** 两个 Skill 都有规划环节；在画几何之前先审计划，比画错了再撤销便宜。
 - **主动要预览。** AutoCAD 路线最后有 8 步验证器加截图；SolidWorks 路线会导出四张正交预览图。
