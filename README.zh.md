@@ -354,7 +354,10 @@ node bin\dsh-sw-cad.mjs serve autocad        # 应为 AutoCAD MCP Pro，2 个工
 codex mcp list
 ```
 
-发布前实际验证过的：两个 `serve` 目标都能通过包自带的入口完成 JSON-RPC 握手——AutoCAD 服务器自报
+发布前实际验证过的（AutoCAD 2026 与 SolidWorks 2026 都在运行）：`system_status` 返回
+`connected: true`、`backend: com`、运行中的版本号和当前活动文档名；`drawing_info` 返回打开文档的实体数、
+范围与单位；`layer_list` 返回实时的图层表；SolidWorks 侧返回 `status: ok` 并识别到正在运行的实例。
+两个 `serve` 目标也都能通过包自带的入口完成 JSON-RPC 握手——AutoCAD 服务器自报
 `AutoCAD MCP Pro 3.4.11`（pip 包是 1.6.0，版本号在服务器侧是另一套），垫片自报 `solidworks-discovery
 1.0.0`，后面是上游 `solidworks_mcp` 1.30.0——两边都只广告两个元工具。discovery 能按关键词检索到
 `gear_draw_spur_front_view` / `keyway_draw_keyed_bore`；`dsh --dump-config` 两条记录都能加载且命令为

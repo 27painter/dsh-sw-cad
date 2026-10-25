@@ -368,10 +368,14 @@ node bin\dsh-sw-cad.mjs serve autocad        # expects AutoCAD MCP Pro, 2 tools
 codex mcp list
 ```
 
-What was verified before publishing: both `serve` targets answer a JSON-RPC handshake through the
-package's own binary — the AutoCAD server reports `AutoCAD MCP Pro 3.4.11` (the pip package is 1.6.0, the
-server carries its own version), the shim reports `solidworks-discovery 1.0.0` behind upstream
-`solidworks_mcp` 1.30.0 — and each advertises exactly two meta-tools. Discovery finds
+What was verified before publishing, against live applications (AutoCAD 2026 and SolidWorks 2026
+running): `system_status` returns `connected: true`, `backend: com`, the running version and the active
+document name; `drawing_info` returns the open document's entity count, extents and units; `layer_list`
+returns the live layer table; and the SolidWorks side reports `status: ok` with the running instance
+detected. Both `serve` targets also answer a JSON-RPC handshake through the package's own binary — the
+AutoCAD server reports `AutoCAD MCP Pro 3.4.11` (the pip package is 1.6.0, the server carries its own
+version), the shim reports `solidworks-discovery 1.0.0` behind upstream `solidworks_mcp` 1.30.0 — and
+each advertises exactly two meta-tools. Discovery finds
 `gear_draw_spur_front_view` / `keyway_draw_keyed_bore` by keyword; `dsh --dump-config` loads both rows
 with `command: dsh-sw-cad`; the SolidWorks preflight passes. The shim was measured end to end on 36
 Chinese and English queries: `tools/list` costs 256 tokens instead of 23,404, every query returned a
