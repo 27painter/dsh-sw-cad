@@ -51,7 +51,10 @@
     "codex-config.snippet.toml",
     "README.md",
     "README.zh.md",
-    "LICENSE"
+    "LICENSE",
+    "!**/__pycache__",
+    "!**/*.pyc",
+    "!**/*.pyo"
   ],
   "dsh": {
     "bundle": {
@@ -64,7 +67,11 @@
   "os": [
     "win32"
   ],
+  "devDependencies": {
+    "@deepseek-ai/dsh-mcp-client": "0.2.0-rc.2"
+  },
   "scripts": {
-    "check": "node bin/dsh-sw-cad.mjs doctor"
+    "check": "node bin/dsh-sw-cad.mjs doctor",
+    "test": "node test/plugin.test.mjs"
   }
 }

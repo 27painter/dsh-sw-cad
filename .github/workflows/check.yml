@@ -1,0 +1,45 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Syntax of everything that ships. CAD automation itself cannot run here:
+      # it needs AutoCAD or SolidWorks, a Windows session, and a COM server.
+      - name: Parse the JavaScript
+        run: |
+          node --check lib/index.js
+          node --check lib/paths.mjs
+          node --check bin/dsh-sw-cad.mjs
+
+      - name: Compile the Python
+        run: |
+          python -m py_compile lib/probe.py
+          python -m py_compile mcp-shim/sw_discovery_shim.py
+          python -m py_compile mcp-shim/verify_shim.py
+
+      - name: Resolve paths without a CAD install
+        run: node bin/dsh-sw-cad.mjs where
+
+      - name: Report the pinned upstream
+        run: node bin/dsh-sw-cad.mjs version
+
+      - name: Pack
+        run: npm pack --dry-run
+
+      - name: Plugin registration logic
+        run: node test/plugin.test.mjs

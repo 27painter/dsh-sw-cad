@@ -137,6 +137,12 @@ It inspects ten things and repairs only what is absent or stale:
 Running it twice is a no-op. It exits `0` when everything is in place and `1` otherwise, so it is safe to
 wrap in a script or hand to an agent. Nothing is downloaded unless a core piece is actually missing.
 
+> [!WARNING]
+> Route 3 also writes `~/.dsh/cordis.patch.yml`. If you installed the plugin as well, that is a second
+> registration of the same two servers under the same `serverName`, and dsh refuses the duplicate — the
+> session fails to start. Use one route or the other, not both: with the plugin installed, keep
+> `~/.dsh/cordis.patch.yml` at `[]`.
+
 ### Commands
 
 | Command | What it does |
@@ -347,6 +353,9 @@ Practical notes, learned the hard way:
   geometry is drawn is cheaper than undoing a bad drawing.
 - **Ask for the preview.** The AutoCAD path ends in an 8-step validator plus a screenshot; the SolidWorks
   path exports four orthographic previews. "Show me the preview" is a fair request and the skills honor it.
+  One caveat, measured here: the AutoCAD screenshot needs the window to be visible — with AutoCAD hidden or
+  minimised it comes back blank. The geometry itself is always verifiable through the API (handles, bounding
+  boxes, mass properties), so do not treat a blank image as a failed drawing.
 
 ## Verification
 

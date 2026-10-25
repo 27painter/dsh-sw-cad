@@ -16,3 +16,8 @@ node_modules/
 package-lock.json
 pnpm-lock.yaml
 *.tgz
+
+# Python bytecode -- py_compile in CI writes these, and they must never ship
+__pycache__/
+*.pyc
+*.pyo
