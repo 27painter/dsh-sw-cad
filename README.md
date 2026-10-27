@@ -2,6 +2,7 @@
 
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![npm](https://img.shields.io/npm/v/dsh-sw-cad?logo=npm)](https://www.npmjs.com/package/dsh-sw-cad)
+[![awesome-dsh-plugin](https://img.shields.io/static/v1?label=awesome-dsh-plugin&message=listed&color=blue)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
 
 **Two MCP servers and two skills that let a DeepSeek Harness or Codex agent drive real CAD software.**
 They wire up two existing open-source projects — [U-C4N/Autocad-MCP](https://github.com/U-C4N/Autocad-MCP)
