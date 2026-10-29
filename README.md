@@ -9,8 +9,8 @@ They wire up two existing open-source projects — [U-C4N/Autocad-MCP](https://g
 and [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill) —
 so an agent can draw in AutoCAD, model in SolidWorks, and export the results. This repository is the
 configuration layer: isolated environments, launch parameters, on-demand loading and client registration.
-It does not fork, patch or repackage either server. Where upstream lacks a capability — SolidWorks has no
-way to hide its 66-tool catalog — this repository adds a small shim in front of it instead of touching it.
+It does not fork, patch or repackage either server. Both now hide their catalogs behind their own
+discovery mode, so this repository no longer ships one: it configures theirs.
 
 English | [中文](README.zh.md)
 
@@ -38,15 +38,16 @@ Two MCP servers are the muscle, registered in the client config:
 | Server | Tools advertised | Idle cost | Mode |
 |---|---:|---:|---|
 | `autocad` | 2 | 365 tokens | Upstream `DISCOVERY_MODE=search`: only `search_tools` + `call_tool`; the 242-tool catalog is searched by keyword |
-| `solidworks` | 2 | 256 tokens | `mcp-shim/` from this repository in front of upstream's 66-tool server (50 `solidworks_*` + 14 `cadstudio_*` + 2 `design_*`), which would otherwise cost 23,404 |
+| `solidworks` | 3 | 474 tokens | Upstream `SW_MCP_DISCOVERY=search`: `sw_search_tools`, `sw_describe_tool`, `sw_call_tool`; the 66-tool catalog (50 `solidworks_*` + 14 `cadstudio_*` + 2 `design_*`) is searched on demand, and would otherwise cost 23,411 |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/token-cost-dark.svg">
-  <img alt="Bar chart of idle context cost: AutoCAD direct 83,732 tokens, SolidWorks direct 23,404, both together 107,136, this kit 621" src="docs/token-cost-light.svg">
+  <img alt="Bar chart of idle context cost: AutoCAD direct 83,732 tokens, SolidWorks direct 23,411, both together 107,143, this kit 839" src="docs/token-cost-light.svg">
 </picture>
 
-*Tool schemas are paid for before the first request. Connected directly the two servers cost 107,136
-tokens; through this kit they cost 621, a 99.4% cut. Reproduce with `mcp-shim/verify_shim.py`.*
+*Tool schemas are paid for before the first request. Connected directly the two servers cost 107,143
+tokens; through this kit they cost 839, a 99.2% cut. Both sides are measured the same way: the
+`tools/list` bytes on the wire, counted with `cl100k_base`.*
 
 ```
 you speak natural language
@@ -57,8 +58,7 @@ you speak natural language
    │
    └─ MCP servers (cordis.patch.yml / codex config.toml)
           ├─ autocad    upstream discovery mode, 242 tools on demand
-          └─ solidworks our shim, 2 meta-tools, 66 tools on demand
-                          └─ spawns upstream server.py lazily
+          └─ solidworks upstream discovery, 3 entry tools, 66 tools on demand
 ```
 
 ## What is upstream, what is ours
@@ -70,14 +70,13 @@ This matters more than usual here, because the two servers are other people's wo
 | AutoCAD MCP server (`autocad-mcp-pro`) | [U-C4N/Autocad-MCP](https://github.com/U-C4N/Autocad-MCP), installed from PyPI | MIT |
 | SolidWorks skill + MCP server | [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill), cloned at install time | MIT |
 | `skills/autocad-mcp-pro/SKILL.md` | Authored here — upstream has no AutoCAD skill | MIT |
-| `mcp-shim/` (SolidWorks discovery shim + lexicon) | Authored here — upstream has no equivalent | MIT |
 | `bin/`, `lib/` (including `probe.py`, which checks for the CAD COM servers), `package.json`, `cordis.patch.yml`, `install.ps1`, `bootstrap.ps1`, `codex-config.snippet.toml`, `assets/`, READMEs | Authored here | MIT |
 
 **Nothing upstream is vendored.** The installer fetches the PyPI package and clones (or zip-downloads) the
 SolidWorks repository at install time, so you always get upstream's current code and upstream keeps
 ownership of it. The value this repository adds is the part that was missing: verified launch parameters,
-the discovery-mode configuration, a discovery shim for the server that lacks one, the on-demand skill
-wiring, the junction trick that keeps gigabytes off C:, and an installer that survives a blocked git
+the discovery-mode configuration for both servers, the on-demand skill wiring, the junction trick that
+keeps gigabytes off C:, and an installer that survives a blocked git
 protocol.
 
 ## Install
@@ -128,8 +127,6 @@ It inspects ten things and repairs only what is absent or stale:
 | `venv-autocad` + `autocad-mcp-pro` | `install.ps1` |
 | `venv-solidworks` + `mcp` / `pymupdf` / `ezdxf` / `pywin32` | `install.ps1` |
 | SolidWorks skill clone | `install.ps1` |
-| discovery shim | copied from this repository |
-| shim catalogue | rebuilt with `--build-catalog`, also when older than `server.py` |
 | `~/.dsh/skills` junction | created |
 | `~/.dsh/cordis.patch.yml` entries | `install.ps1` (backs the file up first) |
 | `~/.codex/skills` junctions | created |
@@ -267,22 +264,14 @@ D:\cad-agents\venv-solidworks\Scripts\python.exe -m pip install -r D:\cad-agents
 D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\dsh-skills\solidworks-automation\scripts\cad_doctor.py
 ```
 
-**Optionally put the discovery shim in front of SolidWorks** (every route above does this for you; these are
-the manual steps). Without it the client carries all 66 tool schemas — 23,404 tokens — in every request:
-
-```powershell
-New-Item -ItemType Directory -Force -Path D:\cad-agents\mcp-shim | Out-Null
-Copy-Item .\mcp-shim\* D:\cad-agents\mcp-shim\ -Force
-
-# build the search catalogue (once, and again after any upstream update)
-D:\cad-agents\venv-solidworks\Scripts\python.exe D:\cad-agents\mcp-shim\sw_discovery_shim.py `
-  --python D:\cad-agents\venv-solidworks\Scripts\python.exe `
-  --server D:\cad-agents\dsh-skills\solidworks-automation\mcp-server\server.py --build-catalog
-```
+**Set `SW_MCP_DISCOVERY=search` on the SolidWorks server** (every route above does this for you; this is
+the manual step). Upstream defaults to it since 2026-10-29, so an unconfigured client already gets the
+three entry tools; setting it explicitly keeps that true if upstream ever changes the default back.
+Without it the client carries all 66 tool schemas — 23,411 tokens — in every request.
 
 **Register both servers with your client.** dsh reads `~/.dsh/cordis.patch.yml` — copy this repository's
-`cordis.patch.yml` there. It carries no absolute path: each row calls `dsh-sw-cad serve <target>`, so the
-only requirement is that the binary is on PATH (`npm install -g dsh-sw-cad`). Codex reads
+`cordis.patch.yml` there. It inserts one row — this package — and the plugin registers the servers itself,
+so nothing has to be on PATH. Codex reads
 `~/.codex/config.toml` — append `codex-config.snippet.toml`, or use upstream's own registrar
 (`mcp-server\register_codex_mcp.ps1 -Python <venv python> -InstallDependencies`). The Codex snippet does
 contain absolute paths, so adjust those to your `-BaseDir`.
@@ -313,9 +302,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 It checks Python, creates the directories, builds the venvs, installs `autocad-mcp-pro[full]` and the
-SolidWorks requirements, clones the skill (or zip-downloads it when git is blocked), installs the discovery
-shim and builds its catalogue, junctions the skills into `~/.dsh/skills`, writes the dsh config, and drops
-the AutoCAD skill in place.
+SolidWorks requirements, fetches the skill at the pinned commit (zip, so git is not needed), junctions the
+skills into `~/.dsh/skills`, writes the dsh config, and drops the AutoCAD skill in place.
 
 If you are not sure what is already on the machine, run `bootstrap.ps1` instead: it decides whether
 `install.ps1` is needed at all.
@@ -375,8 +363,8 @@ pnpm dsh --profile headless "list available skills"
 & "D:\cad-agents\venv-solidworks\Scripts\python.exe" "D:\cad-agents\dsh-skills\solidworks-automation\scripts\sw_preflight.py"
 
 # both MCP servers answer a handshake through the same entry point dsh uses
-node bin\dsh-sw-cad.mjs serve solidworks     # expects solidworks-discovery, 2 tools
-node bin\dsh-sw-cad.mjs serve autocad        # expects AutoCAD MCP Pro, 2 tools
+node bin\dsh-sw-cad.mjs serve solidworks     # expects solidworks_mcp, 3 entry tools
+node bin\dsh-sw-cad.mjs serve autocad        # expects AutoCAD MCP Pro, 2 entry tools
 
 # Codex
 codex mcp list
@@ -388,13 +376,11 @@ document name; `drawing_info` returns the open document's entity count, extents 
 returns the live layer table; and the SolidWorks side reports `status: ok` with the running instance
 detected. Both `serve` targets also answer a JSON-RPC handshake through the package's own binary — the
 AutoCAD server reports `AutoCAD MCP Pro 3.4.11` (the pip package is 1.6.0, the server carries its own
-version), the shim reports `solidworks-discovery 1.0.0` behind upstream `solidworks_mcp` 1.30.0 — and
-each advertises exactly two meta-tools. Discovery finds
-`gear_draw_spur_front_view` / `keyway_draw_keyed_bore` by keyword; `dsh --dump-config` loads both rows
-with `command: dsh-sw-cad`; the SolidWorks preflight passes. The shim was measured end to end on 36
-Chinese and English queries: `tools/list` costs 256 tokens instead of 23,404, every query returned a
-correct top hit, and `call_tool`
-forwarded a live `solidworks_health_check` to a running SolidWorks 2026.
+version), the SolidWorks server reports `solidworks_mcp` 1.30.0 — and they advertise 2 and 3 entry tools.
+Discovery finds `gear_draw_spur_front_view` / `keyway_draw_keyed_bore` by keyword; on the SolidWorks side
+`sw_search_tools` with the Chinese query "健康检查" returns `solidworks_health_check`, and `sw_call_tool`
+runs it against a live SolidWorks 2026. `dsh --dump-config` loads both rows from this package; the
+SolidWorks preflight passes.
 
 ## Design notes
 
@@ -402,12 +388,13 @@ forwarded a live `solidworks_health_check` to a running SolidWorks 2026.
 mode the client sees two tools (365 tokens) and searches a catalog that carries 206 AutoCAD command names
 plus 1439 synonyms — say "chamfer" and it finds `FILLET`.
 
-**2. SolidWorks needed the same trick, so the shim exists.** Upstream's server registers all 66 tools
-unconditionally; measured on the wire that is 23,404 tokens before the first request. The shim advertises
-`search_tools` + `call_tool` (256 tokens), serves search from a cached catalogue, and spawns the real
-server only when a tool is actually called. The 57 bilingual alias groups in `sw_lexicon.json` are what
-make "拉伸凸台" land on `solidworks_sketch_and_extrude` and "干涉检查" on `solidworks_interference_check`.
-Upstream is untouched, so a `git pull` in the skill directory still works.
+**2. SolidWorks used to need a shim; upstream built one instead.** Until 2026-10-29 that server registered
+all 66 tools unconditionally — 23,411 tokens before the first request — so this repository carried a shim
+that advertised two meta-tools in front of it. Upstream then implemented the same idea itself, better
+tested, and this bundle switched to it: `SW_MCP_DISCOVERY=search` exposes `sw_search_tools`,
+`sw_describe_tool` and `sw_call_tool` (474 tokens) with bilingual synonym scoring, and `sw_describe_tool`
+returns a single schema on demand, which the shim never could. The shim was removed rather than kept as a
+second implementation of a feature its owner now maintains.
 
 **3. Keep `TOOL_PROFILE=full` and `TOOL_PACKS=all`.** They only narrow the *searchable* catalog and do not
 change idle cost. Measured: `lean + core,mech` drops the catalog to 58 tools and makes the parametric gear
@@ -423,9 +410,8 @@ says to set it. This kit sets it to a working directory.
 2026 and SolidWorks 2026 SP4.1. Everything else is expected, not proven — run one small job first.
 
 **7. Discovery is not free, it is deferred.** Every tool call costs one extra round trip: search, then
-call. For a single "draw a box" that is slower than calling the upstream tool directly, and the shim's
-catalogue can go stale if the upstream skill is updated without `--build-catalog`. It is the right trade
-when a session makes several calls, which is the normal case for CAD work.
+call. For a single "draw a box" that is slower than calling the upstream tool directly. It is the right
+trade when a session makes several calls, which is the normal case for CAD work.
 
 **8. It ships as a plugin, not as a bin the patch calls.** The first version registered two MCP client
 rows whose `command` was `dsh-sw-cad`, which only resolves when the package is installed globally — so
@@ -435,8 +421,8 @@ paths, which removes the PATH dependency and lets it check the upstream before r
 
 **9. Pinned, because "latest" is not a version.** `lib/upstream.json` records the exact
 `autocad-mcp-pro` release and the exact SolidWorks skill commit this bundle was validated against;
-`install.ps1` uses them for both the pip install and the archive download. Bumping them is a
-deliberate commit, and the shim catalogue has to be rebuilt when you do.
+`install.ps1` uses them for both the pip install and the archive download. Bumping them is a deliberate
+commit: re-check that `SW_MCP_DISCOVERY=search` still exposes the three entry tools before publishing.
 
 ## Troubleshooting
 
@@ -446,8 +432,8 @@ deliberate commit, and the shim catalogue has to be rebuilt when you do.
 | Codex lists no skills | both junctions under `~/.codex/skills\`; Codex must support skills |
 | AutoCAD tools return nothing | CAD not running, or different user/integrity level; set `AUTOCAD_MCP_BACKEND=com` to rule out the ezdxf fallback |
 | SolidWorks preflight fails | missing deps (`requirements.txt` of the skill) or SW not running |
-| `search_tools` offers a tool that no longer exists | the shim's catalogue is stale — rerun `--build-catalog` |
-| `call_tool` says "Could not start the SolidWorks MCP server" | the `--python` / `--server` paths in the client config are wrong, or the skill was moved |
+| `sw_search_tools` returns nothing useful | the server is running in `full` mode, so there is no search entry — check `SW_MCP_DISCOVERY` |
+| `sw_call_tool` says the tool is unknown | it rejects names not in the catalog; run `sw_search_tools` first to get the exact name |
 | `codex mcp list` empty | the snippet must sit at the end of `config.toml`; paths need doubled backslashes |
 | `git clone` fails during install | the installer falls back to a codeload zip automatically |
 

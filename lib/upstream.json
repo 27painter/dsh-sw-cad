@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact upstream versions this bundle was validated against. Bump deliberately, then rebuild the shim catalogue and re-run mcp-shim/verify_shim.py.",
+  "_comment": "Exact upstream versions this bundle was validated against. Bump deliberately; for the SolidWorks skill, re-check that SW_MCP_DISCOVERY=search still exposes sw_search_tools / sw_describe_tool / sw_call_tool before publishing.",
   "autocadMcp": {
     "package": "autocad-mcp-pro",
     "extras": "full",
@@ -8,7 +8,7 @@
   },
   "solidworksSkill": {
     "repo": "https://github.com/wzyn20051216/solidworks-automation-skill",
-    "commit": "f9d6efbecf297bcdfffc451de81ba3a7bdea6a0d",
-    "validated": "2026-10-23"
+    "commit": "2750ac0892fa2854a4495a296ba238a2f2baa83d",
+    "validated": "2026-10-29"
   }
 }

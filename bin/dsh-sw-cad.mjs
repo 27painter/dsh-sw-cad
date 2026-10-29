@@ -3,7 +3,7 @@
 //
 //   dsh-sw-cad serve autocad       stdio MCP server for AutoCAD (used by dsh)
 //   dsh-sw-cad serve solidworks    stdio MCP server for SolidWorks, behind the
-//                                  discovery shim
+//                                  upstream discovery
 //   dsh-sw-cad install             install the two upstream servers (idempotent)
 //   dsh-sw-cad doctor              report what is present or missing, change nothing
 //   dsh-sw-cad where               print the resolved paths
@@ -127,16 +127,10 @@ function serveAutocad(layout) {
 }
 
 function serveSolidworks(layout) {
-  if (!exists(layout.shimScript)) die(`discovery shim missing from the package: ${layout.shimScript}`);
-  const args = [
-    layout.shimScript,
-    "--python", layout.pySw,
-    "--server", layout.swServer,
-    "--catalog", layout.shimCatalog,
-    "--lexicon", layout.shimLexicon,
-  ];
-  const env = { ...process.env, SW_SHIM_TOP_K: "8" };
-  relay(spawn(layout.pySw, args, { env, stdio: "inherit" }), "solidworks");
+  if (!exists(layout.swServer)) die(`SolidWorks server missing: ${layout.swServer}`);
+  // Upstream does its own discovery now; no shim in between.
+  const env = { ...process.env, SW_MCP_DISCOVERY: "search" };
+  relay(spawn(layout.pySw, [layout.swServer], { env, stdio: "inherit" }), "solidworks");
 }
 
 function relay(child, name) {
@@ -215,8 +209,6 @@ function cmdWhere() {
     "autocad exe": layout.acadExe,
     "solidworks python": layout.pySw,
     "solidworks server": layout.swServer,
-    "shim (packaged)": layout.shimScript,
-    "shim catalog": layout.shimCatalog,
   };
   for (const [k, v] of Object.entries(rows)) {
     console.log(`${exists(v) ? "ok  " : "--  "} ${k.padEnd(18)} ${v}`);

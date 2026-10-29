@@ -29,8 +29,6 @@ jobs:
       - name: Compile the Python
         run: |
           python -m py_compile lib/probe.py
-          python -m py_compile mcp-shim/sw_discovery_shim.py
-          python -m py_compile mcp-shim/verify_shim.py
 
       - name: Resolve paths without a CAD install
         run: node bin/dsh-sw-cad.mjs where

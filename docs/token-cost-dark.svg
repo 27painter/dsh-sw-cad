@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 298" width="900" height="298" role="img" aria-labelledby="t d" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
 <title id="t">Idle context cost of the two CAD MCP tool catalogues</title>
-<desc id="d">AutoCAD alone 83,732 tokens, SolidWorks alone 23,404, both together 107,136; with this kit both servers advertise two meta-tools each and cost 621 tokens.</desc>
+<desc id="d">AutoCAD alone 83,732 tokens, SolidWorks alone 23,411, both together 107,143; with this kit both servers advertise 2 and 3 entry tools and cost 839 tokens.</desc>
 <rect x="0" y="0" width="900" height="298" rx="10" fill="#0d1117"/>
 <text x="16" y="30" font-size="15" font-weight="500" fill="#e6edf3">Idle context cost of the MCP tool catalogues</text>
 <text x="16" y="52" font-size="12.5" fill="#9198a1">tokens, tiktoken cl100k_base, paid before the first request</text>
@@ -28,10 +28,10 @@
 <rect x="210" y="168" width="516.2" height="22" rx="3" fill="#F0997B"/>
 <text x="16" y="179" font-size="13" font-weight="500" fill="#e6edf3">Both, direct</text>
 <text x="16" y="193" font-size="11.5" fill="#9198a1">308 tools</text>
-<text x="734.2" y="184" font-size="12.5" font-weight="500" fill="#e6edf3">107,136</text>
+<text x="734.2" y="184" font-size="12.5" font-weight="500" fill="#e6edf3">107,143</text>
 <rect x="210" y="214" width="530" height="22" rx="3" fill="#21262d" opacity="0.55"/>
-<rect x="210" y="214" width="3.0" height="22" rx="3" fill="#4FD1A5"/>
+<rect x="210" y="214" width="4.0" height="22" rx="3" fill="#4FD1A5"/>
 <text x="16" y="225" font-size="13" font-weight="500" fill="#e6edf3">This kit</text>
-<text x="16" y="239" font-size="11.5" fill="#9198a1">2 + 2 meta-tools</text>
-<text x="221.0" y="230" font-size="12.5" font-weight="500" fill="#e6edf3">621</text>
+<text x="16" y="239" font-size="11.5" fill="#9198a1">2 + 3 entry tools</text>
+<text x="222.0" y="230" font-size="12.5" font-weight="500" fill="#e6edf3">839</text>
 </svg>

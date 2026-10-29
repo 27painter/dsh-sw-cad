@@ -1,7 +1,7 @@
 {
   "name": "dsh-sw-cad",
-  "version": "0.1.3",
-  "description": "Drives the installed AutoCAD and SolidWorks desktop apps from dsh or Codex: two on-demand skills plus two MCP servers, with a discovery shim that keeps the SolidWorks tool catalog at 256 tokens instead of 23,404.",
+  "version": "0.2.0",
+  "description": "Drives the installed AutoCAD and SolidWorks desktop apps from dsh or Codex: two on-demand skills plus two MCP servers, both using their upstream's own tool discovery (2 and 3 entry tools instead of 242 and 66).",
   "type": "module",
   "license": "MIT",
   "author": "27painter",
@@ -40,8 +40,6 @@
   "files": [
     "bin/",
     "lib/",
-    "mcp-shim/",
-    "!mcp-shim/sw_catalog.json",
     "skills/",
     "docs/",
     "assets/",

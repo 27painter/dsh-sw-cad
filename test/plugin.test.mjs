@@ -54,8 +54,13 @@ for (const r of both.registered) {
   assert.equal(r.cfg.failOnStartupError, true, "a server that cannot start must say so");
 }
 assert.deepEqual(both.registered.map((r) => r.cfg.serverName).sort(), ["autocad", "solidworks"]);
-assert.ok(both.registered.some((r) => r.cfg.args.some((a) => a.endsWith("sw_discovery_shim.py"))),
-  "the SolidWorks row must go through the shim");
+// The SolidWorks row runs upstream's server directly and asks it for its own
+// discovery surface; there is no shim in between any more.
+const sw = both.registered.find((r) => r.cfg.serverName === "solidworks");
+assert.ok(sw, "solidworks row missing");
+assert.equal(sw.cfg.env.SW_MCP_DISCOVERY, "search", "must ask upstream for discovery mode");
+assert.ok(sw.cfg.args.length === 1 && sw.cfg.args[0].endsWith("server.py"),
+  `the solidworks row should run server.py alone, got: ${JSON.stringify(sw.cfg.args)}`);
 console.log("both installed  ->", both.registered.map((r) => r.cfg.serverName).sort().join(", "));
 
 // --- one side disabled ------------------------------------------------------

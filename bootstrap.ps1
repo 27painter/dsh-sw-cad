@@ -12,12 +12,11 @@
     - venv-autocad + the autocad-mcp-pro package (AutoCAD upstream)
     - venv-solidworks + the SolidWorks upstream's dependencies
     - the SolidWorks skill clone
-    - the discovery shim and its catalogue (rebuilt when older than server.py)
     - the ~/.dsh/skills junction and the two ~/.codex/skills junctions
     - the mcp entries in ~/.dsh/cordis.patch.yml and ~/.codex/config.toml
 
   Missing core pieces are handed to install.ps1, the full installer. Small ones
-  (catalogue, junctions, config entries) are fixed in place.
+  (junctions, config entries) are fixed in place.
 
   Writes nothing on C: except ~/.dsh and ~/.codex. Never touches AutoCAD,
   SolidWorks or the registry.
@@ -53,7 +52,7 @@ param(
     [switch]$NoDshPatch,
     [switch]$Force,
     [string]$AutocadVersion = "1.6.0",
-    [string]$SkillRef = "f9d6efbecf297bcdfffc451de81ba3a7bdea6a0d"
+    [string]$SkillRef = "2750ac0892fa2854a4495a296ba238a2f2baa83d"
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,9 +61,6 @@ $VenvAcad    = Join-Path $BaseDir "venv-autocad"
 $VenvSw      = Join-Path $BaseDir "venv-solidworks"
 $SkillsDir   = Join-Path $BaseDir "dsh-skills"
 $SkillDest   = Join-Path $SkillsDir "solidworks-automation"
-$ShimDir     = Join-Path $BaseDir "mcp-shim"
-$ShimScript  = Join-Path $ShimDir "sw_discovery_shim.py"
-$ShimCatalog = Join-Path $ShimDir "sw_catalog.json"
 $SwServer    = Join-Path $SkillDest "mcp-server\server.py"
 $DshHome     = Join-Path $env:USERPROFILE ".dsh"
 $PatchFile   = Join-Path $DshHome "cordis.patch.yml"
@@ -184,31 +180,7 @@ function Invoke-Detect {
         Add-Item "core" "sw-skill" "MISSING" $SkillDest $null
     }
 
-    # 5. discovery shim + catalogue
-    if (-not (Test-Path -LiteralPath $ShimScript)) {
-        Add-Item "light" "sw-shim" "MISSING" $ShimScript $null
-    }
-    else {
-        Add-Item "light" "sw-shim" "OK" $ShimDir $null
-        if (-not (Test-Path -LiteralPath $ShimCatalog)) {
-            Add-Item "light" "shim-catalogue" "MISSING" "run --build-catalog" $null
-        }
-        elseif (Test-Path -LiteralPath $SwServer) {
-            $catTime = (Get-Item -LiteralPath $ShimCatalog).LastWriteTime
-            $srvTime = (Get-Item -LiteralPath $SwServer).LastWriteTime
-            if ($catTime -lt $srvTime) {
-                Add-Item "light" "shim-catalogue" "STALE" "older than server.py, rebuild" $null
-            }
-            else {
-                Add-Item "light" "shim-catalogue" "OK" $catTime.ToString("yyyy-MM-dd HH:mm") $null
-            }
-        }
-        else {
-            Add-Item "light" "shim-catalogue" "OK" "present" $null
-        }
-    }
-
-    # 6. dsh skills junction
+    # 5. dsh skills junction
     $swVisible = Join-Path $Junction "solidworks-automation\SKILL.md"
     $acadVisible = Join-Path $Junction "autocad-mcp-pro\SKILL.md"
     if ((Test-Path -LiteralPath $swVisible) -and (Test-Path -LiteralPath $acadVisible)) {
@@ -218,9 +190,9 @@ function Invoke-Detect {
         Add-Item "light" "dsh-skills-junction" "MISSING" $Junction $null
     }
 
-    # 7. dsh config entries -- not checked when the npm bundle patch registers them
+    # 6. dsh config entries -- not checked when the npm bundle patch registers them
     if (-not $NoDshPatch) {
-        $needDsh = @("mcp-autocad", "mcp-solidworks", "sw_discovery_shim.py")
+        $needDsh = @("mcp-autocad", "mcp-solidworks", "SW_MCP_DISCOVERY")
         $missDsh = @(Test-FileContains $PatchFile $needDsh)
         if ($missDsh.Count -eq 0) {
             Add-Item "light" "dsh-config" "OK" $PatchFile $null
@@ -234,7 +206,7 @@ function Invoke-Detect {
         return
     }
 
-    # 8. Codex junctions
+    # 7. Codex junctions
     $cSw = Join-Path $CodexSkills "solidworks-automation\SKILL.md"
     $cAcad = Join-Path $CodexSkills "autocad-mcp-pro\SKILL.md"
     if ((Test-Path -LiteralPath $cSw) -and (Test-Path -LiteralPath $cAcad)) {
@@ -244,8 +216,8 @@ function Invoke-Detect {
         Add-Item "light" "codex-skills-junction" "MISSING" $CodexSkills $null
     }
 
-    # 9. Codex config entries
-    $needCodex = @("[mcp_servers.autocad]", "[mcp_servers.solidworks]", "sw_discovery_shim.py")
+    # 8. Codex config entries
+    $needCodex = @("[mcp_servers.autocad]", "[mcp_servers.solidworks]")
     $missCodex = @(Test-FileContains $CodexConfig $needCodex)
     if ($missCodex.Count -eq 0) {
         Add-Item "light" "codex-config" "OK" $CodexConfig $null
@@ -264,24 +236,6 @@ function Show-Items {
 function Invoke-Installer {
     if (-not (Test-Path -LiteralPath $Installer)) { throw "install.ps1 not found next to bootstrap.ps1" }
     & $Installer -BaseDir $BaseDir -WorkDir $WorkDir -Python $Python -Force:$Force -SkipDshPatch:$NoDshPatch -AutocadVersion $AutocadVersion -SkillRef $SkillRef
-}
-
-function Repair-Shim {
-    $src = Join-Path $PSScriptRoot "mcp-shim"
-    if (-not (Test-Path -LiteralPath $src)) { throw "mcp-shim folder not found next to bootstrap.ps1" }
-    New-Item -ItemType Directory -Force -Path $ShimDir | Out-Null
-    foreach ($f in @("sw_discovery_shim.py", "sw_lexicon.json", "README.md")) {
-        $from = Join-Path $src $f
-        if (Test-Path -LiteralPath $from) {
-            Copy-Item -LiteralPath $from -Destination (Join-Path $ShimDir $f) -Force
-        }
-    }
-    Write-Host "  installed the discovery shim to $ShimDir"
-}
-
-function Repair-Catalogue {
-    & $PySw $ShimScript --python $PySw --server $SwServer --build-catalog
-    if ($LASTEXITCODE -ne 0) { throw "catalogue build failed" }
 }
 
 function Repair-DshJunction {
@@ -358,7 +312,7 @@ if ($coreBad.Count -gt 0) {
 }
 
 # light repairs, in dependency order
-$fixOrder = @("sw-shim", "shim-catalogue", "dsh-skills-junction", "dsh-config",
+$fixOrder = @("dsh-skills-junction", "dsh-config",
               "codex-skills-junction", "codex-config")
 foreach ($name in $fixOrder) {
     $item = $script:items | Where-Object { $_.Name -eq $name -and $_.State -ne "OK" } | Select-Object -First 1
@@ -366,8 +320,6 @@ foreach ($name in $fixOrder) {
     Write-Host ""
     Write-Host "Fixing $name ($($item.State)):"
     switch ($name) {
-        "sw-shim" { Repair-Shim }
-        "shim-catalogue" { Repair-Catalogue }
         "dsh-skills-junction" { Repair-DshJunction }
         "dsh-config" { Invoke-Installer }
         "codex-skills-junction" { Repair-CodexJunction }
