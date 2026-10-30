@@ -16,6 +16,12 @@ let peer = null;
 try {
   peer = await import("@deepseek-ai/dsh-mcp-client");
 } catch {
+  // A developer without devDependencies can skip; CI cannot — a skipped test
+  // that exits 0 is a green run that verified nothing.
+  if (process.env.CI) {
+    console.error("FAIL: @deepseek-ai/dsh-mcp-client missing in CI; run npm install first");
+    process.exit(1);
+  }
   console.log("SKIP: @deepseek-ai/dsh-mcp-client is not installed (npm install)");
   process.exit(0);
 }
