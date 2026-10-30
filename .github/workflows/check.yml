@@ -39,5 +39,10 @@ jobs:
       - name: Pack
         run: npm pack --dry-run
 
+      - name: Install the dev dependencies
+        run: npm install --no-audit --no-fund
+
+      # Without the install above this test would print SKIP and exit 0 —
+      # a green run that verified nothing.
       - name: Plugin registration logic
         run: node test/plugin.test.mjs
