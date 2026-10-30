@@ -52,7 +52,9 @@ function attempt(env) {
 }
 
 // --- both CAD applications present -----------------------------------------
-const both = attempt({ SW_CAD_DISABLE: undefined });
+// SW_CAD_ASSUME makes the expected result independent of what this machine
+// has installed: CI runners have neither AutoCAD nor SolidWorks.
+const both = attempt({ SW_CAD_DISABLE: undefined, SW_CAD_ASSUME: "autocad,solidworks" });
 for (const r of both.registered) {
   assert.equal(r.mod, peer, "must register the MCP client itself");
   assert.ok(path.isAbsolute(r.cfg.command), "command must be absolute, not a PATH name");
@@ -70,20 +72,30 @@ assert.ok(sw.cfg.args.length === 1 && sw.cfg.args[0].endsWith("server.py"),
 console.log("both installed  ->", both.registered.map((r) => r.cfg.serverName).sort().join(", "));
 
 // --- one side disabled ------------------------------------------------------
-const noAcad = attempt({ SW_CAD_DISABLE: "autocad" });
+const noAcad = attempt({ SW_CAD_DISABLE: "autocad", SW_CAD_ASSUME: "autocad,solidworks" });
 assert.deepEqual(noAcad.registered.map((r) => r.cfg.serverName), ["solidworks"]);
 console.log("autocad off     -> solidworks only");
 
-const noSw = attempt({ SW_CAD_DISABLE: "solidworks" });
+const noSw = attempt({ SW_CAD_DISABLE: "solidworks", SW_CAD_ASSUME: "autocad,solidworks" });
 assert.deepEqual(noSw.registered.map((r) => r.cfg.serverName), ["autocad"]);
 console.log("solidworks off  -> autocad only");
 
 // --- nothing left to drive: throw, do not register rows that cannot work ---
-const none = attempt({ SW_CAD_DISABLE: "autocad,solidworks" });
+const none = attempt({ SW_CAD_DISABLE: "autocad,solidworks", SW_CAD_ASSUME: "autocad,solidworks" });
 assert.equal(none.registered.length, 0, "must not register rows that cannot start");
 assert.ok(none.err, "must throw when nothing is left to drive");
 assert.match(none.err.message, /neither AutoCAD nor SolidWorks/i);
 console.log("neither off     -> throws, registers nothing");
+
+// Detection path: with nothing assumed and nothing registered, refuse rather
+// than register a row that cannot start. Skipped on a machine that has CAD.
+const bare = attempt({ SW_CAD_DISABLE: undefined, SW_CAD_ASSUME: undefined });
+if (bare.registered.length === 0) {
+  assert.ok(bare.error, "must throw when nothing is detected");
+  console.log("nothing detected -> throws, registers nothing");
+} else {
+  console.log("nothing detected -> skipped (this machine has CAD installed)");
+}
 
 // --- a machine with no upstream installed is an error, not a silent skip ----
 const empty = fs.mkdtempSync(path.join(os.tmpdir(), "swcad-test-"));
