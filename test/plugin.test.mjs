@@ -91,7 +91,7 @@ console.log("neither off     -> throws, registers nothing");
 // than register a row that cannot start. Skipped on a machine that has CAD.
 const bare = attempt({ SW_CAD_DISABLE: undefined, SW_CAD_ASSUME: undefined });
 if (bare.registered.length === 0) {
-  assert.ok(bare.error, "must throw when nothing is detected");
+  assert.ok(bare.err, "must throw when nothing is detected");
   console.log("nothing detected -> throws, registers nothing");
 } else {
   console.log("nothing detected -> skipped (this machine has CAD installed)");
