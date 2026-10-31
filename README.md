@@ -214,6 +214,11 @@ Upstream verifies against a single release but writes for a range. The honest pi
 Older versions are not refused — nothing checks a version number. They are simply outside what upstream
 verified, so start with one small job and look at the result before trusting a full drawing.
 
+**What this package itself has run.** The live verification below was done on AutoCAD 2026 and
+SolidWorks 2026 SP4.1. A machine moved to **SolidWorks 2025 SP05** and **AutoCAD 2026** since then:
+`doctor` resolves both COM ProgIDs, but no end-to-end job has been run against SW 2025 here, so treat it
+as "expected" rather than "proven" until someone does.
+
 ### Appendix — upstream's own install steps
 
 These are the upstream projects' own instructions. This is also what `install.ps1` automates, so read it if
@@ -370,8 +375,8 @@ node bin\dsh-sw-cad.mjs serve autocad        # expects AutoCAD MCP Pro, 2 entry 
 codex mcp list
 ```
 
-What was verified before publishing, against live applications (AutoCAD 2026 and SolidWorks 2026
-running): `system_status` returns `connected: true`, `backend: com`, the running version and the active
+What was verified before publishing in October 2026, against live applications (AutoCAD 2026 and
+SolidWorks 2026 running at the time): `system_status` returns `connected: true`, `backend: com`, the running version and the active
 document name; `drawing_info` returns the open document's entity count, extents and units; `layer_list`
 returns the live layer table; and the SolidWorks side reports `status: ok` with the running instance
 detected. Both `serve` targets also answer a JSON-RPC handshake through the package's own binary — the
