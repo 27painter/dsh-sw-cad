@@ -209,15 +209,15 @@ Upstream verifies against a single release but writes for a range. The honest pi
 | CAD | Verified | Expected to work | Why |
 |---|---|---|---|
 | AutoCAD | 2026 (every COM path, live run), 2027 (API compatible) | 2025 / 2024 / 2023 | COM goes through the long-stable ActiveX API. Run the upstream `scripts\smoke_*_com.py` against your build to confirm. And if COM cannot do something on your version, the ezdxf backend still can — it needs no AutoCAD at all. |
-| SolidWorks | 2026 SP4.1 (upstream's acceptance target) | 2025 / 2024 / 2023 | The code carries explicit SW2024 fixes (Chinese edition: selecting a sketch by name, `AddComponent4` returning `None`), and upstream's contributor guide asks for 2020–2025 compatibility. 2023 has not been exercised. |
+| SolidWorks | 2026 SP4.1 (upstream's acceptance target), **2025 SP05** (live run: part → sketch → rectangle → extrude → save → STEP) | 2024 / 2023 | The code carries explicit SW2024 fixes (Chinese edition: selecting a sketch by name, `AddComponent4` returning `None`), and upstream's contributor guide asks for 2020–2025 compatibility. The 2025 run produced a Chinese sketch name (`草图1`), so that fix path was exercised too. 2023 has not been exercised. |
 
 Older versions are not refused — nothing checks a version number. They are simply outside what upstream
 verified, so start with one small job and look at the result before trusting a full drawing.
 
 **What this package itself has run.** The live verification below was done on AutoCAD 2026 and
-SolidWorks 2026 SP4.1. A machine moved to **SolidWorks 2025 SP05** and **AutoCAD 2026** since then:
-`doctor` resolves both COM ProgIDs, but no end-to-end job has been run against SW 2025 here, so treat it
-as "expected" rather than "proven" until someone does.
+SolidWorks 2026 SP4.1 in October 2026. SolidWorks **2025 SP05** has since been exercised separately
+(part → sketch → rectangle → extrude → one body → save → STEP, with a Chinese sketch name), so 2025 is
+now verified too; AutoCAD 2026 is the only AutoCAD build this package has been run against.
 
 ### Appendix — upstream's own install steps
 
