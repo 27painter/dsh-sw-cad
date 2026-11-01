@@ -79,6 +79,12 @@ the discovery-mode configuration for both servers, the on-demand skill wiring, t
 keeps gigabytes off C:, and an installer that survives a blocked git
 protocol.
 
+**One exception, and it is deliberate:** `patches/` carries two fixes for upstream defects that are
+silent — a vertical linear dimension measures 0.0, and every edge's diameter and length come back null.
+Both are open as pull requests upstream; until they land, `install.ps1` applies the patches to the
+installed copies and `bootstrap.ps1` reports whether they are in place. See
+[`patches/README.md`](patches/README.md).
+
 ## Install
 
 Three ways in. Pick one, then check the prerequisites at the end of this section.
