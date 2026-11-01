@@ -11,10 +11,15 @@
     so dsh auto-discovers the skill from its default scan path while the
     files physically live on the data drive
     (2 meta-tools instead of 66: ~256 tokens idle instead of ~23.4k)
-  - Copies the two dsh patch files into <BaseDir>
-  - Backs up and rewrites ~/.dsh/cordis.patch.yml (adds two insert entries)
+  - Copies this package to <BaseDir>\dsh-sw-cad and registers it as a bundle in
+    a dsh profile (<profile>/package.json: dependencies + dsh.profile.bundles),
+    then runs pnpm install there. The plugin registers the two MCP servers
+    itself when dsh loads it, so no cordis.patch.yml edit is needed.
+    Earlier versions wrote those rows into ~/.dsh/cordis.patch.yml, which the
+    desktop profile never reads - that is why the plugin stayed invisible.
   Does NOT touch CAD software, the registry, or ~/.codex/config.toml.
-  NOTE: This script is intentionally ASCII-only (PowerShell 5.1 + no-BOM UTF8).
+  NOTE: Kept ASCII-only so it runs unchanged on Windows PowerShell 5.1 and on
+  PowerShell 7. Written against 7, but nothing here requires it.
 .PARAMETER Python
   Python interpreter used as the venv base. Must be >= 3.11.
   Default: "python" resolved from PATH.
@@ -35,9 +40,11 @@ param(
     [string]$BaseDir = "D:\cad-agents",
     [string]$WorkDir = "D:\AutoCad",
     [switch]$Force,
-    # Skip rewriting ~/.dsh/cordis.patch.yml. Used when the servers are
-    # registered by the npm bundle patch (dsh plugin add) instead.
+    # Skip registering the bundle in the dsh profile, for people who manage
+    # their profile themselves (e.g. dsh plugin add by hand).
     [switch]$SkipDshPatch,
+    # dsh profile to register into. Profiles live in ~/.dsh/profiles/<name>.
+    [string]$DshProfile = "desktop",
     # Pinned upstream versions. Defaults match lib/upstream.json, which is the
     # pair this bundle was validated against; changing them is deliberate.
     [string]$AutocadVersion = "1.6.0",
@@ -55,7 +62,6 @@ $SkillRepo = "https://github.com/wzyn20051216/solidworks-automation-skill.git"
 $SkillZip  = "https://codeload.github.com/wzyn20051216/solidworks-automation-skill/zip/$SkillRef"
 $Junction  = Join-Path $env:USERPROFILE ".dsh\skills"          # logical path dsh scans
 $DshHome   = Join-Path $env:USERPROFILE ".dsh"
-$PatchFile = Join-Path $DshHome "cordis.patch.yml"
 $SwServer  = Join-Path $SkillDest "mcp-server\server.py"
 
 function Say($msg) { Write-Host "==> $msg" }
@@ -153,13 +159,9 @@ if (Test-Path -LiteralPath $swRootReq) {
     if ($LASTEXITCODE -ne 0) { throw "pip install -r root requirements.txt failed" }
 }
 
-# ---------- 7. dsh patch config + AutoCAD skill ----------
-Say "[7/7] Writing dsh MCP config (cordis.patch.yml) and skills..."
+# ---------- 7. register the bundle in the active dsh profile ----------
+Say "[7/7] Registering the dsh bundle in profile '$DshProfile'..."
 $kitDir = $PSScriptRoot
-$patchTemplate = Join-Path $kitDir "cordis.patch.yml"
-if (Test-Path -LiteralPath $patchTemplate) {
-    Copy-Item -LiteralPath $patchTemplate -Destination (Join-Path $BaseDir "cordis.patch.yml") -Force
-}
 
 # AutoCAD skill is authored in this kit (upstream has none); install if missing
 $acadSkillDir = Join-Path $SkillsDir "autocad-mcp-pro"
@@ -172,70 +174,77 @@ if (-not (Test-Path -LiteralPath (Join-Path $acadSkillDir "SKILL.md"))) {
     }
 }
 
-# backup existing patch (even if it is just [])
-if ($SkipDshPatch) {
-    Write-Host "    skipping ~/.dsh/cordis.patch.yml (the bundle patch registers the servers)"
-}
-elseif (Test-Path -LiteralPath $PatchFile) {
-    $bak = "$PatchFile.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    Copy-Item -LiteralPath $PatchFile -Destination $bak -Force
-    Write-Host "    backup: $bak"
+$ProfileDir = Join-Path $DshHome (Join-Path "profiles" $DshProfile)
+$ProfilePkg = Join-Path $ProfileDir "package.json"
+if (-not (Test-Path -LiteralPath $ProfilePkg)) {
+    $profilesRoot = Join-Path $DshHome "profiles"
+    $available = @()
+    if (Test-Path -LiteralPath $profilesRoot) {
+        $available = Get-ChildItem -LiteralPath $profilesRoot -Directory |
+            Where-Object { $_.Name -ne "node_modules" } |
+            Select-Object -ExpandProperty Name
+    }
+    throw "dsh profile '$DshProfile' not found under $profilesRoot. Available: $($available -join ', '). Pass -DshProfile <name>."
 }
 
-$patchContent = @"
-# Managed by dsh-sw-cad/install.ps1 -- on-demand skill architecture
-# Entry points : 2 skills, lazily loaded via SKILL.md
-#   - solidworks-automation  ($SkillDest)
-#   - autocad-mcp-pro         ($SkillsDir\autocad-mcp-pro)
-# Muscles (kept): both MCP servers registered below.
-#   - autocad   : DISCOVERY mode = 2 meta-tools only (~256 tokens idle),
-#                 full 242-tool catalog searched on demand.
-#   - solidworks: upstream SW_MCP_DISCOVERY=search = 3 entry tools (~474 tokens
-#                 idle) instead of 66 named tools (~23.4k).
-- insert:
-    - id: mcp-autocad
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: autocad
-        transport: stdio
-        command: '$VenvAcad\Scripts\autocad-mcp.exe'
-        args: []
-        env:
-          AUTOCAD_MCP_BACKEND: auto
-          TOOL_PROFILE: full
-          TOOL_PACKS: 'all'
-          DISCOVERY_MODE: search
-          ALLOWED_PATHS: '$WorkDir'
-        toolCallTimeoutMs: 180000
-        failOnStartupError: false
-        reconnect:
-          enabled: true
-          initialDelayMs: 500
-          maxDelayMs: 30000
-          maxAttempts: 10
-- insert:
-    - id: mcp-solidworks
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: solidworks
-        transport: stdio
-        command: '$VenvSw\Scripts\python.exe'
-        args:
-          - '$SwServer'
-        env:
-          SW_MCP_DISCOVERY: search
-        toolCallTimeoutMs: 300000
-        failOnStartupError: false
-        reconnect:
-          enabled: true
-          initialDelayMs: 500
-          maxDelayMs: 30000
-          maxAttempts: 10
-"@
-# write UTF-8 without BOM (YAML parsers are happiest)
-if (-not $SkipDshPatch) {
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($PatchFile, $patchContent, $utf8NoBom)
+$BundleLink = $null
+if ($SkipDshPatch) {
+    Write-Host "    skipping profile registration (-SkipDshPatch)"
+}
+else {
+    # Copy the package rather than junction it: a junction into wherever this
+    # kit happened to live breaks the moment that directory is moved or cleaned.
+    $PkgDest = Join-Path $BaseDir "dsh-sw-cad"
+    $sameDir = $false
+    if (Test-Path -LiteralPath $PkgDest) {
+        $sameDir = ((Resolve-Path -LiteralPath $kitDir).Path -eq (Resolve-Path -LiteralPath $PkgDest).Path)
+    }
+    if ($sameDir) {
+        Write-Host "    package already at $PkgDest"
+    }
+    else {
+        New-Item -ItemType Directory -Force -Path $PkgDest | Out-Null
+        & robocopy $kitDir $PkgDest /E /XD ".git" "node_modules" /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -gt 7) { throw "robocopy failed with exit code $LASTEXITCODE" }
+        Write-Host "    copied package -> $PkgDest"
+    }
+
+    $bak = "$ProfilePkg.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Copy-Item -LiteralPath $ProfilePkg -Destination $bak -Force
+    Write-Host "    backup: $bak"
+
+    # The profile nests bundles under dsh.profile; editing that with
+    # PSCustomObject is easy to get wrong, so let node do the JSON.
+    $BundleLink = "link:" + ($PkgDest -replace '\\', '/')
+    $helper = Join-Path $env:TEMP "dsh-sw-cad-register.js"
+    $helperSrc = @'
+const fs = require("fs");
+const pkgPath = process.argv[2];
+const linkSpec = process.argv[3];
+const name = process.argv[4];
+const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+pkg.dependencies = pkg.dependencies || {};
+pkg.dependencies[name] = linkSpec;
+pkg.dsh = pkg.dsh || {};
+pkg.dsh.profile = pkg.dsh.profile || {};
+pkg.dsh.profile.bundles = pkg.dsh.profile.bundles || [];
+if (pkg.dsh.profile.bundles.indexOf(name) === -1) { pkg.dsh.profile.bundles.push(name); }
+fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+console.log("registered " + name + " -> " + linkSpec);
+'@
+    [System.IO.File]::WriteAllText($helper, $helperSrc, (New-Object System.Text.UTF8Encoding($false)))
+    & node $helper $ProfilePkg $BundleLink "dsh-sw-cad"
+    if ($LASTEXITCODE -ne 0) { throw "failed to register the bundle in $ProfilePkg" }
+
+    Push-Location -LiteralPath $ProfileDir
+    try {
+        & pnpm install
+        if ($LASTEXITCODE -ne 0) { throw "pnpm install failed in $ProfileDir" }
+    }
+    finally {
+        Pop-Location
+    }
+    Write-Host "    pnpm install done"
 }
 
 # ---------- verify ----------
@@ -244,7 +253,9 @@ $swServer = $SwServer
 $skillVisible = Join-Path $Junction "solidworks-automation\SKILL.md"
 $acadSkillVisible = Join-Path $Junction "autocad-mcp-pro\SKILL.md"
 $mustExist = @($acadExe, $swServer, $skillVisible, $acadSkillVisible)
-if (-not $SkipDshPatch) { $mustExist += $PatchFile }
+if ($BundleLink) {
+    $mustExist += (Join-Path $ProfileDir "node_modules\dsh-sw-cad\package.json")
+}
 foreach ($f in $mustExist) {
     if (-not (Test-Path -LiteralPath $f)) { throw "verify failed, missing: $f" }
 }
@@ -258,11 +269,19 @@ Write-Host "     - autocad-mcp-pro        (MCP discovery mode, any COM-capable A
 Write-Host "   AutoCAD MCP : $acadExe   (2 meta-tools, ~256 tokens idle)"
 Write-Host "   SW MCP      : $pySw $swServer   (3 discovery entries, ~474 tokens idle)"
 Write-Host "                 SW_MCP_DISCOVERY=search; full mode is 66 tools, ~23.4k tokens"
-Write-Host "   dsh config  : $PatchFile  (template copied to $BaseDir\cordis.patch.yml)"
+if ($BundleLink) {
+    Write-Host "   dsh profile : $DshProfile  (bundle dsh-sw-cad -> $BundleLink)"
+    Write-Host "                 The plugin adds the two MCP servers when dsh loads it."
+    Write-Host ""
+    Write-Host " RESTART dsh now. The bundle is read at startup, so the plugin list and"
+    Write-Host " the two MCP servers only appear after a restart."
+}
+else {
+    Write-Host "   dsh profile : not registered (-SkipDshPatch)"
+}
 Write-Host ""
 Write-Host " Verify:"
-Write-Host "   pnpm dsh --profile headless --dump-config"
-Write-Host "   pnpm dsh --profile headless `"list available skills`""
+Write-Host "   dsh --profile $DshProfile --dump-config"
 Write-Host "   SW self-check: & '$pySw' '$SkillDest\scripts\sw_preflight.py'"
 Write-Host ""
 Write-Host " Discovery is upstream's now; nothing to rebuild after a skill update."
