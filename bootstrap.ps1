@@ -50,6 +50,7 @@ param(
     [switch]$Check,
     [switch]$SkipCodex,
     [switch]$NoDshPatch,
+    [string]$DshProfile = "desktop",
     [switch]$Force,
     [string]$AutocadVersion = "1.6.0",
     [string]$SkillRef = "2750ac0892fa2854a4495a296ba238a2f2baa83d"
@@ -65,6 +66,7 @@ $SwServer    = Join-Path $SkillDest "mcp-server\server.py"
 $DshHome     = Join-Path $env:USERPROFILE ".dsh"
 $PatchFile   = Join-Path $DshHome "cordis.patch.yml"
 $Junction    = Join-Path $DshHome "skills"
+$ProfileDir  = Join-Path $DshHome (Join-Path "profiles" $DshProfile)
 $CodexHome   = Join-Path $env:USERPROFILE ".codex"
 $CodexSkills = Join-Path $CodexHome "skills"
 $CodexConfig = Join-Path $CodexHome "config.toml"
@@ -190,15 +192,27 @@ function Invoke-Detect {
         Add-Item "light" "dsh-skills-junction" "MISSING" $Junction $null
     }
 
-    # 6. dsh config entries -- not checked when the npm bundle patch registers them
+    # 6. dsh profile registration. The profile composes its tree from
+    #    profiles/<name>/package.json, not from the global cordis.patch.yml, so
+    #    that is what has to carry the bundle. Checking the global patch here is
+    #    what made the plugin look missing while the profile was fine.
     if (-not $NoDshPatch) {
-        $needDsh = @("mcp-autocad", "mcp-solidworks", "SW_MCP_DISCOVERY")
-        $missDsh = @(Test-FileContains $PatchFile $needDsh)
-        if ($missDsh.Count -eq 0) {
-            Add-Item "light" "dsh-config" "OK" $PatchFile $null
+        $profilePkg = Join-Path $ProfileDir "package.json"
+        $profileLink = Join-Path $ProfileDir "node_modules\dsh-sw-cad"
+        if (-not (Test-Path -LiteralPath $profilePkg)) {
+            Add-Item "light" "dsh-config" "MISSING" "no package.json in profile '$DshProfile'" $null
         }
         else {
-            Add-Item "light" "dsh-config" "MISSING" ("absent: " + ($missDsh -join ", ")) $null
+            $registered = Test-FileContains $profilePkg @('"dsh-sw-cad"')
+            if ($registered.Count -eq 0 -and (Test-Path -LiteralPath $profileLink)) {
+                Add-Item "light" "dsh-config" "OK" $profilePkg $null
+            }
+            elseif ($registered.Count -eq 0) {
+                Add-Item "light" "dsh-config" "MISSING" "bundle not linked into profile '$DshProfile'" $null
+            }
+            else {
+                Add-Item "light" "dsh-config" "MISSING" "dsh-sw-cad missing from profile '$DshProfile' bundles" $null
+            }
         }
     }
 
@@ -225,6 +239,25 @@ function Invoke-Detect {
     else {
         Add-Item "light" "codex-config" "MISSING" ("absent: " + ($missCodex -join ", ")) $null
     }
+
+    # 9. upstream fixes this bundle depends on (see patches/README.md)
+    $patchScript = Join-Path $PSScriptRoot "patches\apply_patches.py"
+    if (-not (Test-Path -LiteralPath $patchScript)) {
+        Add-Item "light" "upstream-patches" "MISSING" "patches/apply_patches.py is missing" $null
+    }
+    elseif (-not (Test-Path -LiteralPath $PyAcad)) {
+        Add-Item "light" "upstream-patches" "MISSING" "needs venv-autocad first" $null
+    }
+    else {
+        $patchOut = & $PyAcad $patchScript --base $BaseDir --check 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Add-Item "light" "upstream-patches" "OK" "all applied" $null
+        }
+        else {
+            $pending = @($patchOut | Where-Object { $_ -match '^\[(PATCHED|DRIFT|SKIP)' })
+            Add-Item "light" "upstream-patches" "MISSING" (($pending -join "; ")) $null
+        }
+    }
 }
 
 function Show-Items {
@@ -235,7 +268,16 @@ function Show-Items {
 
 function Invoke-Installer {
     if (-not (Test-Path -LiteralPath $Installer)) { throw "install.ps1 not found next to bootstrap.ps1" }
-    & $Installer -BaseDir $BaseDir -WorkDir $WorkDir -Python $Python -Force:$Force -SkipDshPatch:$NoDshPatch -AutocadVersion $AutocadVersion -SkillRef $SkillRef
+    & $Installer -BaseDir $BaseDir -WorkDir $WorkDir -Python $Python -Force:$Force -SkipDshPatch:$NoDshPatch -DshProfile $DshProfile -AutocadVersion $AutocadVersion -SkillRef $SkillRef
+}
+
+function Repair-Patches {
+    $patchScript = Join-Path $PSScriptRoot "patches\apply_patches.py"
+    & $PyAcad $patchScript --base $BaseDir
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  one or more patches no longer match the installed upstream."
+        Write-Host "  Check whether upstream shipped the fix; see patches/README.md for the PR links."
+    }
 }
 
 function Repair-DshJunction {
@@ -313,7 +355,7 @@ if ($coreBad.Count -gt 0) {
 
 # light repairs, in dependency order
 $fixOrder = @("dsh-skills-junction", "dsh-config",
-              "codex-skills-junction", "codex-config")
+              "codex-skills-junction", "codex-config", "upstream-patches")
 foreach ($name in $fixOrder) {
     $item = $script:items | Where-Object { $_.Name -eq $name -and $_.State -ne "OK" } | Select-Object -First 1
     if (-not $item) { continue }
@@ -324,6 +366,7 @@ foreach ($name in $fixOrder) {
         "dsh-config" { Invoke-Installer }
         "codex-skills-junction" { Repair-CodexJunction }
         "codex-config" { Repair-CodexConfig }
+        "upstream-patches" { Repair-Patches }
     }
     Invoke-Detect
 }
