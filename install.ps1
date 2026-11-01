@@ -159,6 +159,20 @@ if (Test-Path -LiteralPath $swRootReq) {
     if ($LASTEXITCODE -ne 0) { throw "pip install -r root requirements.txt failed" }
 }
 
+# ---------- 6b. upstream fixes this bundle depends on ----------
+Say "[6b] Applying the upstream fixes this bundle depends on..."
+$patchScript = Join-Path $PSScriptRoot "patches\apply_patches.py"
+if (Test-Path -LiteralPath $patchScript) {
+    & $pyAcad $patchScript --base $BaseDir
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "    one or more patches no longer match the installed upstream."
+        Write-Host "    Check whether upstream shipped the fix; see patches/README.md for the PR links."
+    }
+}
+else {
+    Write-Host "    patches/apply_patches.py not found, skipping"
+}
+
 # ---------- 7. register the bundle in the active dsh profile ----------
 Say "[7/7] Registering the dsh bundle in profile '$DshProfile'..."
 $kitDir = $PSScriptRoot
