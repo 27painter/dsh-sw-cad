@@ -1,6 +1,6 @@
 {
   "name": "dsh-sw-cad",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Drives the installed AutoCAD and SolidWorks desktop apps from dsh or Codex: two on-demand skills plus two MCP servers, both using their upstream's own tool discovery (2 and 3 entry tools instead of 242 and 66).",
   "type": "module",
   "license": "MIT",
@@ -43,6 +43,7 @@
     "skills/",
     "docs/",
     "assets/",
+    "patches/",
     "cordis.patch.yml",
     "bootstrap.ps1",
     "install.ps1",
