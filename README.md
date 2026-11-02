@@ -313,8 +313,9 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 It checks Python, creates the directories, builds the venvs, installs `autocad-mcp-pro[full]` and the
-SolidWorks requirements, fetches the skill at the pinned commit (zip, so git is not needed), junctions the
-skills into `~/.dsh/skills`, writes the dsh config, and drops the AutoCAD skill in place.
+SolidWorks requirements, fetches the skill at the pinned commit (zip, so git is not needed), applies
+`patches/` to the installed copies, junctions the skills into `~/.dsh/skills`, writes the dsh config,
+and drops the AutoCAD skill in place.
 
 If you are not sure what is already on the machine, run `bootstrap.ps1` instead: it decides whether
 `install.ps1` is needed at all.
@@ -372,6 +373,9 @@ pnpm dsh --profile headless "list available skills"
 
 # SolidWorks skill self-check (Python deps + COM)
 & "D:\cad-agents\venv-solidworks\Scripts\python.exe" "D:\cad-agents\dsh-skills\solidworks-automation\scripts\sw_preflight.py"
+
+# are the upstream patches still in place? read-only, exits 1 when one drifted
+python patches\apply_patches.py --check
 
 # both MCP servers answer a handshake through the same entry point dsh uses
 node bin\dsh-sw-cad.mjs serve solidworks     # expects solidworks_mcp, 3 entry tools

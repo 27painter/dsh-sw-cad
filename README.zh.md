@@ -74,6 +74,11 @@
 两台服务器的 discovery 模式配置、按需 Skill 接线、把几个 G 的依赖挡在 C 盘之外的
 junction 技巧，以及一个在 git 协议被拦时还能装完的安装器。
 
+**有一个例外，而且是故意的：** `patches/` 装着两个上游缺陷的修复——竖向线性标注量出来是 0.0，
+以及每条边的直径和长度都返回 null，两者都不报错。两个都已在向上游提 PR；在合并之前，
+`install.ps1` 会把补丁打到已安装的副本上，`bootstrap.ps1` 会报告补丁是否在位。
+详见 [`patches/README.md`](patches/README.md)。
+
 ## 安装
 
 三条路，挑一条。装之前先看本节末尾的前置条件。
@@ -294,8 +299,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 它依次检查 Python、建目录、建两个 venv、装 `autocad-mcp-pro[full]` 和 SolidWorks 依赖、克隆 skill
-（直接下固定提交的 zip，不需要 git）、junction 进 `~/.dsh/skills`、写 dsh 配置、
-落下 AutoCAD skill。
+（直接下固定提交的 zip，不需要 git）、把 `patches/` 打到已安装的副本上、junction 进 `~/.dsh/skills`、
+写 dsh 配置、落下 AutoCAD skill。
 
 不确定机器上已经装了什么的话，用 `bootstrap.ps1`：它自己会判断需不需要跑 `install.ps1`。
 
@@ -342,6 +347,9 @@ dsh-sw-cad doctor
 
 # 服务器会用到的每一条路径
 dsh-sw-cad where
+
+# 上游补丁还在不在位？只读检测，有一条漂了就退出码 1
+python patches\apply_patches.py --check
 
 # dsh 是否看见两个服务器、两个技能
 pnpm dsh --profile headless --dump-config
