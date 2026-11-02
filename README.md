@@ -327,6 +327,10 @@ junction the two skills into `~/.codex/skills/` (last four commands of the appen
 > **Start AutoCAD / SolidWorks first, as the same user.** COM automation crosses a process boundary that
 > Windows guards by user and integrity level. An agent started elevated while the CAD app runs normally
 > (or vice versa) will connect to nothing, and the failure looks like "the tool did nothing".
+>
+> This rule is specific to COM. [`dsh-nx`](https://github.com/27painter/dsh-nx) drives NX through
+> NXOpen, which runs inside the NX process — an open NX window cannot be attached to there, so that
+> plugin starts its own batch session and must **not** be pre-opened. Do not carry this habit across.
 
 ## Usage
 
