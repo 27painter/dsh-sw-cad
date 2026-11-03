@@ -433,3 +433,7 @@ PATH 依赖没了，也才有可能在注册之前先检查上游。
 ## 许可证
 
 MIT（见 [LICENSE](LICENSE)）。上游组件保持各自 MIT 许可证，本仓库不重新分发它们。
+
+## 收录
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/27painter-dsh-sw-cad-72nbze?v=cf1d61753707805eaa75dbd27f05c229)](https://m8ven.ai/mcp/27painter-dsh-sw-cad-72nbze?s=readme)

@@ -460,3 +460,7 @@ commit: re-check that `SW_MCP_DISCOVERY=search` still exposes the three entry to
 
 MIT (see [LICENSE](LICENSE)). Upstream components remain under their own MIT licenses; this repository
 redistributes neither.
+
+## Listed on
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/27painter-dsh-sw-cad-72nbze?v=cf1d61753707805eaa75dbd27f05c229)](https://m8ven.ai/mcp/27painter-dsh-sw-cad-72nbze?s=readme)
