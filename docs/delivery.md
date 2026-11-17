@@ -57,6 +57,37 @@ dsh-sw-cad deliver D:\work\part-001 --out D:\work\delivery.json --json
 | `step.entities` | 实体数 > 100 | 错误 |
 | `step.bbox` | 用 `CARTESIAN_POINT` 原始坐标算包围盒，全零视为无几何。**近似值**，不是 B-Rep 校验 | 错误 |
 
+## 交付模式
+
+两种，开工前定一次，整批沿用。
+
+| 模式 | 查什么 | 什么时候用 |
+|---|---|---|
+| `normal`（默认） | 文件本身站不站得住：尺寸实体、单位、图幅、比例、字体、线宽、文字层、STEP schema 与包围盒 | 打样、方案验证、内部结构稿 |
+| `half`（半交付） | 上面全部，**再加**：材料、配合、粗糙度必须取自 `lib/standards.json` | 要交给别人看、要能核查取值的图 |
+
+```powershell
+dsh-sw-cad mode half        # 设一次，之后 deliver 自动沿用
+dsh-sw-cad mode             # 看当前是什么
+dsh-sw-cad mode normal      # 切回
+dsh-sw-cad deliver D:\work\part-001 --profile half    # 单次覆盖，不改配置
+```
+
+优先级：命令行 `--profile` > `~/.dsh/sw-cad.json` 里的 `profile` > `normal`。
+
+**为什么要有两种**：公差和材料是设计决策，不是格式。普通模式下硬卡这些会让打样变得很啰嗦；半交付模式下不卡，交出去的图就只是“看起来专业”。所以做成一次选择，而不是每次打断。
+
+**半交付模式新增的检查**：
+
+| id | 读什么 | 级别 |
+|---|---|---|
+| `standards.material` | 图纸上出现 `lib/standards.json` 里的某个牌号（45、40Cr、6061…） | 错误 |
+| `standards.material_table` | 材料栏写了一个表里没有的值时，单独指出来 | 错误 |
+| `standards.fit` | 出现的配合代号（`H7/g6`、`φ40H7` 里的 `H7`）都在表内 | 错误 |
+| `standards.roughness` | 出现的 `Ra` 值在优先数系里（0.4/0.8/1.6/3.2/6.3/12.5/25…）；一个 Ra 都没有算错误 | 错误 |
+
+`delivery.json` 里会写 `"profile": "half"` 和 `"not_checked": ["审签…", "尺寸链闭合", "零件可加工性"]`——**半交付的 pass 不是全合规**，这份记录是为了让它不会被误当成全合规。
+
 ## 它不查什么
 
 公差配合（`H7/g6`）、材料、热处理、表面处理、尺寸链是否闭合、形位公差数值是否合理、零件能不能加工。

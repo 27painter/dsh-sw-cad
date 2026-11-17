@@ -153,6 +153,23 @@ verdict: fail  (5 failure(s), 1 warning(s))
 逐项规则和 JSON 结构见 [`docs/delivery.md`](docs/delivery.md)。AutoCAD 技能里已经把它写进工作流第 6 步；
 SolidWorks 技能是上游文本、本仓库不改，所以那条路要自己触发——写进任务指令，或者放进脚本最后一步。
 
+### 两种模式
+
+`normal`（默认）查文件本身。`half` 另外要求图纸上写的取值来自 `lib/standards.json`：配合（`H7/g6`）、
+材料牌号（`45`、`40Cr`、`6061`）、优先数系里的粗糙度。表外的值判失败，没有材料也没有 `Ra` 也判失败。
+
+```powershell
+dsh-sw-cad mode half        # 设一次，之后 deliver 自动沿用
+dsh-sw-cad mode             # 看当前是什么
+dsh-sw-cad deliver D:\work\part-001 --profile half   # 单次覆盖
+```
+
+模式是**按任务定一次**，不是按零件。二十张图不该被打断二十次——技能只在开工前问一个问题，而且只在
+提示词没说清这张图给谁用的时候问。
+
+`delivery.json` 会写 `"profile": "half"` 和仍未检查的项。**半交付的 pass 不是全合规**，报告里写明这一点，
+而不是让两者被混为一谈。
+
 ## 上下文成本
 
 工具 schema 在第一次请求之前就要付钱。两个服务器都把目录藏在各自的 discovery 模式后面，客户端拿到的是
@@ -223,7 +240,7 @@ dsh --profile headless --dump-config           # dsh 看见两条记录
 python patches\apply_patches.py --check        # 只读，补丁漂了退出码 1
 node bin\dsh-sw-cad.mjs serve solidworks       # JSON-RPC 握手，应为 3 个入口工具
 node bin\dsh-sw-cad.mjs serve autocad          # 应为 2 个入口工具
-npm test                                       # 插件注册 + 5 个交付检查用例
+npm test                                       # 插件注册 + 6 个交付检查用例
 codex mcp list                                 # Codex 侧
 ```
 

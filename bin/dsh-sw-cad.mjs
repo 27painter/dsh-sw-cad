@@ -21,6 +21,7 @@ import {
   PKG_ROOT,
   exists,
   missingPieces,
+  readConfig,
   resolveLayout,
   writeConfig,
 } from "../lib/paths.mjs";
@@ -34,9 +35,11 @@ const HELP = `dsh-sw-cad ${PKG.version}
                                install the upstream AutoCAD MCP and SolidWorks
                                skill; only the missing parts are touched
   doctor                       report present/missing pieces, change nothing
-  deliver <dir|file>... [--require drawing,pdf] [--out delivery.json] [--json] [--quiet]
+  deliver <dir|file>... [--require drawing,pdf] [--profile normal|half] [--out delivery.json] [--json] [--quiet]
                                check what a job produced and write delivery.json;
                                exit 1 when it does not hold up
+  mode [normal|half]           show or set the delivery profile that deliver uses
+                               by default (saved in ~/.dsh/sw-cad.json)
   where                        print the resolved paths
   version                      print the version
 
@@ -213,9 +216,34 @@ function cmdDeliver(argv) {
   if (!exists(script)) die(`deliver.py is missing from the package at ${script}`);
   const layout = resolveLayout();
   const python = [layout.pySw, layout.python].find((candidate) => candidate && exists(candidate)) || "python";
-  const res = spawnSync(python, [script, ...argv], { stdio: "inherit" });
+  // A profile named on the command line wins; otherwise the one saved by
+  // `dsh-sw-cad mode`. Batch runs rely on this: the choice is made once for the
+  // job, not once per part.
+  const args = [...argv];
+  if (!argv.includes("--profile")) {
+    const saved = (readConfig() || {}).profile;
+    if (saved === "half" || saved === "normal") args.push("--profile", saved);
+  }
+  const res = spawnSync(python, [script, ...args], { stdio: "inherit" });
   if (res.error) die(`could not run ${python}: ${res.error.message}`);
   process.exit(res.status === null ? 1 : res.status);
+}
+
+function cmdMode(argv) {
+  const wanted = argv[0];
+  const cfg = readConfig() || {};
+  if (!wanted) {
+    console.log(cfg.profile || "normal");
+    return;
+  }
+  if (wanted !== "normal" && wanted !== "half") {
+    die(`mode takes "normal" or "half" (got ${wanted})`);
+  }
+  writeConfig({ ...cfg, profile: wanted });
+  log(`delivery profile: ${wanted}`);
+  if (wanted === "half") {
+    log("values on the drawing must come from lib/standards.json; 审签 and 尺寸链闭合 are still not checked");
+  }
 }
 
 function cmdWhere() {
@@ -258,6 +286,9 @@ switch (cmd) {
     break;
   case "deliver":
     cmdDeliver(rest);
+    break;
+  case "mode":
+    cmdMode(rest);
     break;
   case "where":
     cmdWhere();

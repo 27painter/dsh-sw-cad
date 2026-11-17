@@ -170,6 +170,25 @@ Rules per check, and the JSON shape: [`docs/delivery.md`](docs/delivery.md). The
 step as item 6 of its workflow; the SolidWorks skill is upstream text and is not modified here, so on that
 route the check has to be invoked — in the task instruction, or as the last step of your script.
 
+### Two profiles
+
+`normal` (default) checks the files. `half` also requires the values written on the drawing to come from
+`lib/standards.json`: fits (`H7/g6`), material grades (`45`, `40Cr`, `6061`), roughness in the preferred
+series. A value outside the table fails, and so does a drawing with no material and no `Ra`.
+
+```powershell
+dsh-sw-cad mode half        # set once; every later deliver inherits it
+dsh-sw-cad mode             # what is set now
+dsh-sw-cad deliver D:\work\part-001 --profile half   # one-off override
+```
+
+The choice is made once per job, not per part — a batch of twenty drawings should not stop and ask twenty
+times. The skill asks a single question at the start, and only when the request does not already say what
+the drawing is for.
+
+`delivery.json` records `"profile": "half"` together with what is still unchecked. **A half-delivery pass
+is not full compliance**, and the report says so instead of letting the two be confused.
+
 ## What it costs in context
 
 Tool schemas are paid for before the first request. Both servers hide their catalogs behind their own
@@ -242,7 +261,7 @@ dsh --profile headless --dump-config           # dsh sees both rows
 python patches\apply_patches.py --check        # read-only, exit 1 when a patch drifted
 node bin\dsh-sw-cad.mjs serve solidworks       # JSON-RPC handshake, expects 3 entry tools
 node bin\dsh-sw-cad.mjs serve autocad          # expects 2 entry tools
-npm test                                       # plugin wiring + 5 delivery-check cases
+npm test                                       # plugin wiring + 6 delivery-check cases
 codex mcp list                                 # Codex side
 ```
 

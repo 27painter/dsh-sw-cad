@@ -15,6 +15,24 @@ metadata: { "os": ["win32"], "requires": { "anyBins": ["python", "py"], "pythonP
 3. **工作目录**：输出放在 `D:\AutoCad`（ALLOWED_PATHS 白名单）内。
 4. 可用 `system_about` 确认运行时后端与版本；`system_capabilities` 查当前工具集。
 
+## 交付模式（只在开工前问一次）
+
+默认 `normal`，**不要问**。只有同时满足这三条时才问一次：是出图/交付任务、提示词没说明交付用途、也没给材料或公差或表面要求。
+
+只问一个问题，两个选项：
+
+> 这张图是内部用，还是要按可核查的取值出？A 普通（现在这样，能画能标注）／B 半交付（材料、配合、粗糙度只能从标准表里选，我会核一遍；审签和尺寸链仍然要人看）
+
+**不要每张图重问。** 用户选了 B 之后，批量跑剩下的零件一律沿用，中间不再打断。开工前执行一次：
+
+```
+dsh-sw-cad mode half      # 之后 deliver 自动沿用，不需要每张图加 --profile
+```
+
+半交付模式下取值只有一处来源：`lib/standards.json`（配合、材料牌号、热处理、表面处理、粗糙度优先数系）。**表里没有的值不要自创**——要么换成表内的，要么告诉用户这张表需要扩展。图纸上要出现材料栏和一个 Ra 值，否则交付检查会判失败。
+
+`dsh-sw-cad mode normal` 切回来。
+
 ## 工具调用方式（按需检索）
 
 不要凭记忆猜工具名。先 `search_tools` 用关键词检索，再 `call_tool` 调用。
@@ -47,7 +65,7 @@ metadata: { "os": ["win32"], "requires": { "anyBins": ["python", "py"], "pythonP
 3. **齿轮/键槽/剖面线**：用参数化工具 `gear_draw_*` / `keyway_draw_*`，**禁止**用基本图元手画齿形。
 4. **标注**：用 `dimension_*` 生成真实 DIMENSION 实体，**禁止**用 text+leader 冒充尺寸。
 5. **收尾**：`drawing_finalize` 是 8 步验证器 + 保存 + 截图，**不过它不能宣称完成**（验证失败会抛错）；随后 `drawing_critique` 应返回 0 issues，并重开 DXF 复核几何、核对 PDF `/MediaBox` 幅面。**工具返回成功 ≠ 任务完成。**
-6. **交付门禁**：最后跑 `dsh-sw-cad deliver <输出目录> --require drawing,pdf`。它读回落盘的文件（DIMENSION 实体、`$INSUNITS`、图纸空间是否有内容、PDF 幅面与文字层），判定不是 `pass` 就不算交付，把失败项原样报给用户，不要自行绕过。公差配合与材料/热处理仍要人工确认——这条命令不查这些。
+6. **交付门禁**：最后跑 `dsh-sw-cad deliver <输出目录> --require drawing,pdf`。它读回落盘的文件（DIMENSION 实体、`$INSUNITS`、图纸空间是否有内容、PDF 幅面与文字层），判定不是 `pass` 就不算交付，把失败项原样报给用户，不要自行绕过。用户选了半交付模式就加 `--profile half`（或用 `dsh-sw-cad mode half` 设一次，之后自动沿用）。公差配合与材料/热处理仍要人工确认——这条命令只核它们是否取自标准表，不核选得对不对。
 
 ## 已验证能力要点
 

@@ -134,5 +134,61 @@ assert.equal(flatRun.code, 1, "a STEP with no extent must fail");
 const flatIds = flatRun.report.files.flatMap((file) => file.checks.filter((c) => !c.ok).map((c) => c.id));
 assert.ok(flatIds.includes("step.bbox"), `expected step.bbox in ${flatIds}`);
 
+// 6. Half-delivery: the values on the drawing must come from lib/standards.json.
+//    Needs ezdxf to build the DXF; skipped when the interpreter does not have it.
+const BUILD = String.raw`
+import sys, os, ezdxf
+base, which = sys.argv[1], sys.argv[2]
+notes = (["比例 1:2", "材料 45", "φ40H7/g6", "Ra 1.6"] if which == "ok"
+         else ["比例 1:2", "材料 40CrMnMoX", "φ40H7/z9", "Ra 2.0"])
+doc = ezdxf.new("R2018", setup=True)
+doc.header["$INSUNITS"] = 4
+doc.layers.add("粗实线", lineweight=50)
+doc.layers.add("细实线", lineweight=13)
+doc.styles.add("GB", font="fangsong.ttf")
+msp = doc.modelspace()
+msp.add_lwpolyline([(0,0),(100,0),(100,60),(0,60)], close=True, dxfattribs={"layer":"粗实线"})
+msp.add_linear_dim(base=(0,-12), p1=(0,0), p2=(100,0)).render()
+blk = doc.blocks.new("TITLEBLOCK")
+blk.add_lwpolyline([(0,0),(180,0),(180,40),(0,40)], close=True)
+sheet = doc.layouts.get("Layout1")
+sheet.dxf.paper_width, sheet.dxf.paper_height = 420, 297
+sheet.add_blockref("TITLEBLOCK", (10,10))
+for i, text in enumerate(notes):
+    sheet.add_text(text, dxfattribs={"height":4,"style":"GB"}).set_placement((20, 34 - i*8))
+doc.saveas(os.path.join(base, which + ".dxf"))
+`;
+const halfRoot = path.join(root, "half");
+const halfOkDir = path.join(halfRoot, "ok");
+const halfBadDir = path.join(halfRoot, "bad");
+fs.mkdirSync(halfOkDir, { recursive: true });
+fs.mkdirSync(halfBadDir, { recursive: true });
+const builtOk = spawnSync(PY, ["-c", BUILD, halfOkDir, "ok"], { encoding: "utf8" });
+const builtBad = spawnSync(PY, ["-c", BUILD, halfBadDir, "bad"], { encoding: "utf8" });
+if (builtOk.status !== 0 || builtBad.status !== 0) {
+  console.log("deliver: ezdxf not available here, half-delivery cases skipped");
+} else {
+  const halfOk = deliver(halfOkDir, ["--profile", "half"]);
+  assert.equal(halfOk.code, 0, `values from the table must pass:\n${halfOk.stdout}`);
+  assert.equal(halfOk.report.profile, "half");
+  assert.ok(halfOk.report.not_checked.length > 0, "half profile must say what it did not check");
+  const okIds = halfOk.report.files.flatMap((f) => f.checks.map((c) => c.id));
+  assert.ok(okIds.includes("standards.material"), `expected standards.material in ${okIds}`);
+  assert.ok(okIds.includes("standards.fit"), `expected standards.fit in ${okIds}`);
+
+  const halfBad = deliver(halfBadDir, ["--profile", "half"]);
+  assert.equal(halfBad.code, 1, "a material and a fit outside the table must fail");
+  const badIds = halfBad.report.files.flatMap((f) => f.checks.filter((c) => !c.ok).map((c) => c.id));
+  assert.ok(badIds.includes("standards.material_table"), `expected standards.material_table in ${badIds}`);
+  assert.ok(badIds.includes("standards.fit"), `expected standards.fit in ${badIds}`);
+  assert.ok(badIds.includes("standards.roughness"), `expected standards.roughness in ${badIds}`);
+
+  // The same drawing under the default profile must pass: the values are only
+  // judged when the job asked to be judged that way.
+  const normalRun = deliver(halfBadDir, ["--profile", "normal"]);
+  assert.equal(normalRun.code, 0, "normal profile must not judge standard values");
+}
+
 fs.rmSync(root, { recursive: true, force: true });
-console.log("deliver: 5 cases behave as intended");
+console.log("deliver: 6 cases behave as intended");
+

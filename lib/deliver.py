@@ -359,6 +359,9 @@ def check_drawing(path, size):
             severity="warning",
         )
     )
+
+    if PROFILE == "half":
+        checks.extend(check_standards(doc))
     return checks
 
 
@@ -558,6 +561,102 @@ CHECKERS = {
     "report": check_review_report,
 }
 
+# Which checks run. "normal" answers "do the files hold up"; "half" additionally
+# requires the values written on the drawing to come from lib/standards.json.
+PROFILE = "normal"
+
+STANDARDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "standards.json")
+
+
+def load_standards():
+    with open(STANDARDS_FILE, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def drawing_text(doc):
+    """Every string the drawing carries, wherever it sits."""
+    parts = []
+    for name in doc.layouts.names():
+        layout = doc.layouts.get(name)
+        for entity in layout:
+            kind = entity.dxftype()
+            if kind == "TEXT":
+                parts.append(entity.dxf.text)
+            elif kind == "MTEXT":
+                parts.append(entity.text)
+            elif kind == "DIMENSION":
+                override = entity.dxf.get("text", "")
+                if override and override not in ("<>", ""):
+                    parts.append(override)
+            elif kind == "INSERT":
+                for attrib in entity.attribs:
+                    parts.append(attrib.dxf.text)
+    return "\n".join(parts)
+
+
+def check_standards(doc):
+    """Half-delivery checks: the values must come from the table, not from the
+    model's imagination. A value outside the table is a fail, because the point
+    of the table is that a reviewer can look the value up."""
+    table = load_standards()
+    text = drawing_text(doc)
+    checks = []
+
+    material_names = [name for group, values in table["materials"].items() if not group.startswith("_") for name in values]
+    # A material is stated either as 材料: 45 or by naming the grade outright.
+    hit = next((name for name in material_names if re.search(r"(?<![0-9A-Za-z])" + re.escape(name) + r"(?![0-9A-Za-z])", text)), None)
+    checks.append(
+        Check(
+            "standards.material",
+            hit is not None,
+            f"材料 {hit}" if hit else "no material from lib/standards.json appears on the drawing",
+        )
+    )
+
+    stated = re.search(r"(?:材料|MATERIAL)\s*[:：]?\s*([^\s,，;；]{1,20})", text, re.I)
+    if stated and hit is None:
+        checks.append(
+            Check(
+                "standards.material_table",
+                False,
+                f"材料栏写的是 {stated.group(1)!r}, which is not in lib/standards.json — add it to the table or use a listed grade",
+            )
+        )
+
+    # No leading \b: in "φ40H7/g6" the H follows a digit, so a word boundary
+    # never appears there and the code would go unnoticed.
+    fits = set(re.findall(r"([A-Z]{1,2}\d{1,2}/[a-z]{1,2}\d{1,2})(?![0-9A-Za-z])", text))
+    known_fits = {item for group, values in table["fits"].items() if not group.startswith("_") for item in values}
+    if fits:
+        unknown = sorted(fits - known_fits)
+        checks.append(
+            Check(
+                "standards.fit",
+                not unknown,
+                f"{', '.join(sorted(fits))}" if not unknown else f"not in the table: {', '.join(unknown)}",
+            )
+        )
+    else:
+        checks.append(Check("standards.fit", True, "no fit code on the drawing", severity="warning"))
+
+    rough = set(re.findall(r"Ra\s*([0-9]+(?:\.[0-9]+)?)", text, re.I))
+    if rough:
+        allowed = {f"{value:g}" for value in table["roughness_ra"]["values"]}
+        unknown = sorted(value for value in rough if value not in allowed)
+        checks.append(
+            Check(
+                "standards.roughness",
+                not unknown,
+                "Ra " + ", ".join(sorted(rough)) if not unknown else f"Ra {', '.join(unknown)} not in the preferred series",
+            )
+        )
+    else:
+        checks.append(
+            Check("standards.roughness", False, "no Ra value anywhere; a half-delivery drawing states surface finish")
+        )
+
+    return checks
+
 
 # ------------------------------------------------------------------ driver
 
@@ -620,7 +719,16 @@ def main(argv):
     )
     parser.add_argument("--json", action="store_true", help="print the report to stdout as well")
     parser.add_argument("--quiet", action="store_true", help="only the verdict line")
+    parser.add_argument(
+        "--profile",
+        default="normal",
+        choices=("normal", "half"),
+        help="normal checks the files; half also requires tolerance, material and finish to come from lib/standards.json",
+    )
     args = parser.parse_args(argv)
+
+    global PROFILE
+    PROFILE = args.profile
 
     files = collect(args.targets)
     entries = [inspect(path) for path in files]
@@ -651,12 +759,19 @@ def main(argv):
         )
 
     verdict = "fail" if failures else "pass"
+    not_checked = [
+        "审签（设计/校对/审核/批准）",
+        "尺寸链闭合",
+        "零件可加工性",
+    ]
     report = {
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "profile": args.profile,
         "targets": [os.path.abspath(t) for t in args.targets],
         "verdict": verdict,
         "required": required,
         "missing": missing,
+        "not_checked": not_checked if args.profile == "half" else [],
         "counts": {
             "files": len(entries),
             "checked": sum(1 for e in entries if e["kind"] != "other"),
@@ -681,6 +796,7 @@ def main(argv):
                 print(f"  {mark} {check['id']:<22} {check['detail']}")
         if missing:
             print(f"\nmissing: {', '.join(missing)}")
+    print(f"profile: {args.profile}" + ("  (values must come from lib/standards.json; 审签 and 尺寸链 still need a human)" if args.profile == "half" else ""))
     print(f"verdict: {verdict}  ({len(failures)} failure(s), {len(warnings)} warning(s))  -> {out}")
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
