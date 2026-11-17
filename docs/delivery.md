@@ -26,14 +26,45 @@ dsh-sw-cad deliver D:\work\part-001 --out D:\work\delivery.json --json
 ## 判定规则
 
 - **错误（exit 1）**：文件缺失、DXF 无尺寸实体、`$INSUNITS=0`、图纸空间空、PDF 非 ISO A 幅面或没有文字层、
-  STEP 头部认不出、review report 不是 pass、`--require` 的类型缺席、**目录里什么都没有**。
-- **告警（不影响 exit）**：AP203、DWG 数不了实体、原生零件只验存在性、没有标题栏线索、依赖缺失导致某项没查。
+  STEP 头部认不出、STEP 包围盒退化（所有点在同一位置）、有图纸却没写比例、review report 不是 pass、
+  `--require` 的类型缺席、**目录里什么都没有**。
+- **告警（不影响 exit）**：AP203、DWG 数不了实体、原生零件只验存在性、没有标题栏线索、图纸幅面不是 ISO A、
+  线宽只有一种、中文文字没有配 CJK 字体、尺寸文字互相压住、依赖缺失导致某项没查。
 - 告警一律带原因，写进 `delivery.json`，不会静默放过。
+
+### 图纸检查逐项
+
+| id | 读什么 | 级别 |
+|---|---|---|
+| `drawing.dimensions` | modelspace 里 `DIMENSION` 实体数 > 0 | 错误 |
+| `drawing.entities` | modelspace 实体数 > 0 | 错误 |
+| `drawing.layers` | 图层表非空 | 错误 |
+| `drawing.units` | `$INSUNITS` 是 mm/cm/m/inch；`0`（无单位）算错误 | 错误 |
+| `drawing.sheets` | 至少一个图纸空间布局里**有实体**（只有 Layout1 不算，默认就有） | 错误 |
+| `drawing.sheet` | 出图幅面对 ISO 216（A4–A0，±2mm） | 告警 |
+| `drawing.scale` | 图纸上写明「比例 1:2」或 `SCALE 1:2`；`dimlfac` 只作为附注，不算数 | 有图纸时错误 |
+| `drawing.titleblock` | 图纸空间有 INSERT 块，或含「比例/材料/图名/SCALE」的文字 | 告警 |
+| `drawing.lineweights` | 图层里至少有 2 种显式线宽（粗实线/细实线） | 告警 |
+| `drawing.fonts` | 出现中文时，用到的文字样式必须指向仿宋/宋体/黑体/雅黑这类字体 | 告警 |
+| `drawing.dim_overlap` | 尺寸文字中点两两距离 < 2mm 的配对数为 0 | 告警 |
+
+### STEP 检查逐项
+
+| id | 读什么 | 级别 |
+|---|---|---|
+| `step.schema` | `FILE_SCHEMA` 认得出 AP203/214/242（schema 名不是 AP 号：`AUTOMOTIVE_DESIGN`=AP214、`CONFIG_CONTROL_DESIGN`=AP203） | 错误 |
+| `step.pmi` | AP203 丢颜色与装配结构 | 告警 |
+| `step.entities` | 实体数 > 100 | 错误 |
+| `step.bbox` | 用 `CARTESIAN_POINT` 原始坐标算包围盒，全零视为无几何。**近似值**，不是 B-Rep 校验 | 错误 |
 
 ## 它不查什么
 
-公差配合（`H7/g6`）、材料、热处理、表面处理、尺寸链是否闭合、形位公差数值是否合理。工具允许模型填任意值，
-仓库里也没有标准表可以对照。**这些仍然需要人看**，`delivery.json` 的 `pass` 不等于可以下厂。
+公差配合（`H7/g6`）、材料、热处理、表面处理、尺寸链是否闭合、形位公差数值是否合理、零件能不能加工。
+工具允许模型填任意值，仓库里也没有标准表可以对照。**这些仍然需要人看**，`delivery.json` 的 `pass`
+不等于可以下厂。
+
+STEP 的包围盒只是"零件有没有被缩放/旋转、导出里有没有几何"的粗筛。真正的几何校验要把 STEP 解析成
+B-Rep 再和原生模型比对体积、面数、拓扑，那需要 OCCT（约 200 MB），本仓库没有为此引入依赖。
 
 ## 产物
 

@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import traceback
 from datetime import datetime, timezone
@@ -225,6 +226,139 @@ def check_drawing(path, size):
             severity="warning",
         )
     )
+
+    # The sheet the drawing will be plotted on.  A DXF leaves this at the A3
+    # default until someone sets it, so a mismatch is a warning: the drawing is
+    # still readable, it just will not plot at the size the title block claims.
+    sheets_seen = []
+    for name in doc.layouts.names():
+        if name.lower() == "model":
+            continue
+        layout = doc.layouts.get(name)
+        if not len(list(layout)):
+            continue
+        width = layout.dxf.get("paper_width", 0)
+        height = layout.dxf.get("paper_height", 0)
+        short, long = sorted((float(width), float(height)))
+        matched = None
+        for sheet_name, (w, h) in SHEETS.items():
+            if abs(short - w) <= SHEET_TOLERANCE_MM and abs(long - h) <= SHEET_TOLERANCE_MM:
+                matched = sheet_name
+                break
+        sheets_seen.append((name, short, long, matched))
+    if sheets_seen:
+        detail = "; ".join(f"{n} {s:.0f}x{l:.0f}mm ({m or 'not ISO A'})" for n, s, l, m in sheets_seen)
+        checks.append(Check("drawing.sheet", all(m for *_rest, m in sheets_seen), detail, severity="warning"))
+
+    # 比例 / SCALE, stated on the sheet.  dimlfac is not a substitute: it is a
+    # measurement factor on a dimension style, and a style left at 100 (as the
+    # ezdxf templates are) says nothing about the plot scale.  It is reported
+    # next to the verdict, not counted as one.
+    scale_pattern = re.compile(r"(?:比例|SCALE)\s*[:：]?\s*([0-9]+\s*[:：]\s*[0-9]+)", re.I)
+    scale_found = []
+    for name in doc.layouts.names():
+        if name.lower() == "model":
+            continue
+        for entity in doc.layouts.get(name):
+            if entity.dxftype() == "TEXT":
+                text = entity.dxf.text
+            elif entity.dxftype() == "MTEXT":
+                text = entity.text
+            else:
+                continue
+            hit = scale_pattern.search(text)
+            if hit:
+                scale_found.append(hit.group(0))
+    factors = []
+    for entity in msp.query("DIMENSION"):
+        style_name = entity.dxf.get("dimstyle", "Standard")
+        try:
+            factor = float(doc.dimstyles.get(style_name).dxf.get("dimlfac", 1.0))
+        except Exception:
+            continue
+        if abs(factor - 1.0) > 1e-9:
+            factors.append(f"{style_name} dimlfac={factor:g}")
+    detail = ", ".join(sorted(set(scale_found))[:3]) if scale_found else "no 比例/SCALE stated on the sheet"
+    if factors:
+        detail += "  (dimension style factor: " + ", ".join(sorted(set(factors))[:2]) + ")"
+    checks.append(Check("drawing.scale", len(scale_found) > 0, detail, severity="error" if sheets_seen else "warning"))
+
+    # Line weights: a mechanical drawing separates thick outlines from thin
+    # dimensions by weight, not only by colour.  One weight everywhere means
+    # the plot comes out flat.
+    weights = set()
+    for layer in doc.layers:
+        value = layer.dxf.get("lineweight", -3)
+        weights.add(value)
+    distinct = {w for w in weights if w >= 0}
+    checks.append(
+        Check(
+            "drawing.lineweights",
+            len(distinct) >= 2,
+            f"{len(distinct)} explicit line weight(s) across {len(doc.layers)} layers"
+            + ("" if len(distinct) >= 2 else "; thick and thin will plot the same"),
+            severity="warning",
+        )
+    )
+
+    # Chinese drawings are set in 仿宋 (or 宋体 for headings).  If the sheet
+    # carries Chinese text and every style points at a Latin font, the plot
+    # shows boxes on a machine without that font.
+    cjk = re.compile(r"[\u4e00-\u9fff]")
+    has_cjk = False
+    used_styles = set()
+    for layout_name in doc.layouts.names():
+        layout = doc.layouts.get(layout_name)
+        for entity in layout:
+            kind = entity.dxftype()
+            text = None
+            if kind == "TEXT":
+                text = entity.dxf.text
+                used_styles.add(entity.dxf.get("style", "Standard"))
+            elif kind == "MTEXT":
+                text = entity.text
+                used_styles.add(entity.dxf.get("style", "Standard"))
+            if text and cjk.search(text):
+                has_cjk = True
+    if has_cjk:
+        fonts = []
+        for style_name in used_styles:
+            try:
+                font = doc.styles.get(style_name).dxf.get("font", "")
+            except Exception:
+                font = ""
+            fonts.append(f"{style_name}:{font or 'none'}")
+        gb_font = re.compile(r"(fangsong|simsun|simhei|song|kai|msyh|yahei)", re.I)
+        ok_font = any(gb_font.search(item) for item in fonts)
+        checks.append(
+            Check(
+                "drawing.fonts",
+                ok_font,
+                ", ".join(fonts[:4]) + ("" if ok_font else "  — Chinese text with no CJK font assigned"),
+                severity="warning",
+            )
+        )
+
+    # Dimension text that lands on top of other dimension text.  Measured from
+    # text_midpoint, so it catches the crowded cases a reviewer would circle.
+    mids = []
+    for entity in msp.query("DIMENSION"):
+        mid = entity.dxf.get("text_midpoint", None)
+        if mid is not None:
+            mids.append((float(mid[0]), float(mid[1])))
+    close = 0
+    for i in range(len(mids)):
+        for j in range(i + 1, len(mids)):
+            if abs(mids[i][0] - mids[j][0]) < 2.0 and abs(mids[i][1] - mids[j][1]) < 2.0:
+                close += 1
+    checks.append(
+        Check(
+            "drawing.dim_overlap",
+            close == 0,
+            f"{close} pair(s) of dimension texts within 2 mm of each other" if close else f"{len(mids)} dimension texts, none overlapping",
+            severity="warning",
+        )
+    )
     return checks
 
 
@@ -325,6 +459,39 @@ def check_step(path, size):
                 if "CARTESIAN_POINT" in line:
                     points += 1
     checks.append(Check("step.entities", entities > 100, f"{entities} entities, {points} CARTESIAN_POINTs"))
+
+    # A bounding box from the raw coordinates.  This is not a geometry check —
+    # it does not know faces from holes — but it does catch the two things that
+    # silently ruin a handoff: the part was scaled, or the export carries no
+    # geometry at all.  Reading B-Rep properly needs OCCT and 200 MB of wheels,
+    # which is more than this bundle is willing to add for one check.
+    pattern = re.compile(
+        r"CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([-0-9.eE+]+)\s*,\s*([-0-9.eE+]+)\s*,\s*([-0-9.eE+]+)\s*\)"
+    )
+    xs = []
+    ys = []
+    zs = []
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            hit = pattern.search(line)
+            if hit:
+                xs.append(float(hit.group(1)))
+                ys.append(float(hit.group(2)))
+                zs.append(float(hit.group(3)))
+    if xs:
+        size = (max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs))
+        degenerate = max(size) <= 1e-6
+        checks.append(
+            Check(
+                "step.bbox",
+                not degenerate,
+                "bounding box %.3f x %.3f x %.3f (approximate, from raw points)" % size
+                if not degenerate
+                else "every point sits at the same place: the export carries no geometry",
+            )
+        )
+    else:
+        checks.append(Check("step.bbox", False, "no CARTESIAN_POINT coordinates could be read", severity="warning"))
     return checks
 
 

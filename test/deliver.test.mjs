@@ -74,10 +74,14 @@ const goodRun = deliver(good, ["--require", "step"]);
 assert.equal(goodRun.code, 0, `a complete delivery must pass:\n${goodRun.stdout}`);
 assert.equal(goodRun.report.verdict, "pass");
 assert.equal(goodRun.report.counts.failures, 0);
+assert.equal(goodRun.report.counts.warnings, 0, "a complete delivery must not warn either");
 assert.ok(
   goodRun.report.files.every((file) => file.sha256 && file.sha256.length === 64),
   "every checked file carries a sha256",
 );
+const goodIds = goodRun.report.files.flatMap((file) => file.checks.map((c) => c.id));
+assert.ok(goodIds.includes("step.bbox"), `expected step.bbox in ${goodIds}`);
+assert.ok(goodIds.includes("step.schema"), `expected step.schema in ${goodIds}`);
 
 // 2. The same shape with two things wrong: AP203 (no colour, no assembly) and
 //    a review report that failed. The verdict must be fail, and the reasons
@@ -113,5 +117,22 @@ const required = deliver(partial, ["--require", "drawing"]);
 assert.equal(required.code, 1, "--require drawing must fail when there is no drawing");
 assert.deepEqual(required.report.missing, ["drawing"]);
 
+// 5. A STEP whose points all sit at the origin has a header and a schema but
+//    no geometry. Counting entities alone would call that a pass.
+const flat = path.join(root, "flat");
+fs.mkdirSync(flat);
+const flatLines = [
+  "ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');",
+  "FILE_NAME('flat.step','2026-11-17T00:00:00',(''),(''),'','','');",
+  "FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));", "ENDSEC;", "DATA;",
+];
+for (let i = 1; i <= 200; i++) flatLines.push(`#${i}=CARTESIAN_POINT('',(0.0,0.0,0.0));`);
+flatLines.push("ENDSEC;", "END-ISO-10303-21;", "");
+fs.writeFileSync(path.join(flat, "flat.step"), flatLines.join("\n"), "utf8");
+const flatRun = deliver(flat);
+assert.equal(flatRun.code, 1, "a STEP with no extent must fail");
+const flatIds = flatRun.report.files.flatMap((file) => file.checks.filter((c) => !c.ok).map((c) => c.id));
+assert.ok(flatIds.includes("step.bbox"), `expected step.bbox in ${flatIds}`);
+
 fs.rmSync(root, { recursive: true, force: true });
-console.log("deliver: 4 cases behave as intended");
+console.log("deliver: 5 cases behave as intended");

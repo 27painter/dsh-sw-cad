@@ -414,10 +414,10 @@ dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
 
 | kind | what is actually read |
 |---|---|
-| `.dxf` | parsed with ezdxf: `DIMENSION` entities in modelspace, the layer table, `$INSUNITS`, whether any paper-space layout has anything on it, and a title-block hint |
+| `.dxf` | parsed with ezdxf: `DIMENSION` entities in modelspace, the layer table, `$INSUNITS`, whether any paper-space layout has anything on it, the plot sheet against ISO 216, whether 比例/SCALE is stated, line-weight levels, the font behind Chinese text, dimension texts that sit on top of each other, and a title-block hint |
 | `.dwg` | header only — the `AC1032`-style version tag; counting entities needs a converter |
 | `.pdf` | PyMuPDF: page size against ISO 216 (A4/A3/A2/A1/A0), and whether the text layer is real |
-| `.step` | `FILE_SCHEMA` resolved to AP203/214/242, plus entity and `CARTESIAN_POINT` counts. AP203 warns: it drops colour and assembly structure |
+| `.step` | `FILE_SCHEMA` resolved to AP203/214/242, entity and `CARTESIAN_POINT` counts, and a bounding box from the raw points — which catches a part that was scaled or an export with no geometry in it. AP203 warns: it drops colour and assembly structure |
 | `.sldprt` / `.sldasm` | presence, size and file signature. Geometry is not checked — reading a native part needs the application |
 | `*_review_report.json` | `evaluation.status == pass`, and no issues |
 
@@ -443,7 +443,7 @@ verdict: fail  (5 failure(s), 1 warning(s))
 Two things it does **not** check, and they still need a human: tolerance and fit values (`H7/g6`), and
 material / heat treatment / surface finish. The tools let a model type any of them and there is no
 standard table here to compare against — claiming otherwise would be the same mistake this command exists
-to catch.
+to catch. Nor does it close a dimension chain, or judge whether the part can actually be machined.
 
 It runs on the SolidWorks venv, which is the one carrying ezdxf and PyMuPDF. If a dependency is missing the
 check downgrades to a warning with the reason, rather than crashing or passing silently.

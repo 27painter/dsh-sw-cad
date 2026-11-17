@@ -392,10 +392,10 @@ dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
 
 | 类型 | 真正读了什么 |
 |---|---|
-| `.dxf` | 用 ezdxf 解析：modelspace 里的 `DIMENSION` 实体、图层表、`$INSUNITS`、图纸空间里到底有没有东西、标题栏线索 |
+| `.dxf` | 用 ezdxf 解析：modelspace 里的 `DIMENSION` 实体、图层表、`$INSUNITS`、图纸空间里到底有没有东西、出图幅面对 ISO 216、有没有写明比例/SCALE、线宽层级、中文文字用的字体、互相压住的尺寸文字、标题栏线索 |
 | `.dwg` | 只读文件头——`AC1032` 这类版本标记；数实体需要转换器 |
 | `.pdf` | PyMuPDF：页面尺寸对照 ISO 216（A4/A3/A2/A1/A0），以及文字层是不是真的 |
-| `.step` | 把 `FILE_SCHEMA` 解析成 AP203/214/242，再数实体和 `CARTESIAN_POINT`。AP203 会告警：它丢颜色和装配结构 |
+| `.step` | 把 `FILE_SCHEMA` 解析成 AP203/214/242，数实体和 `CARTESIAN_POINT`，再用原始坐标算包围盒——能抓到"零件被缩放过"和"导出里根本没有几何"这两种。AP203 会告警：它丢颜色和装配结构 |
 | `.sldprt` / `.sldasm` | 只看存在、大小和文件签名。**不验几何**——读原生零件需要打开软件 |
 | `*_review_report.json` | `evaluation.status == pass` 且没有问题项 |
 
@@ -418,7 +418,8 @@ verdict: fail  (5 failure(s), 1 warning(s))
 ```
 
 有两样它**不检查**，仍然要人看：公差配合（`H7/g6`）和材料／热处理／表面处理。工具允许模型随便填，
-这里也没有标准表可以对照——声称查了，就成了这条命令本来要抓的那种错误。
+这里也没有标准表可以对照——声称查了，就成了这条命令本来要抓的那种错误。尺寸链闭不闭合、零件能不能加工，
+它同样不判断。
 
 它跑在 SolidWorks 那个 venv 上（ezdxf 和 PyMuPDF 都在里面）。依赖缺失时降级成带原因的告警，不会崩，
 也不会静默放过。`test/deliver.test.mjs` 覆盖四件事：完整交付通过、review report 失败则失败、空目录失败、
