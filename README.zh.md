@@ -10,7 +10,8 @@
 
 一个 dsh / Codex 插件，让 agent 真的能用 **AutoCAD 和 SolidWorks**：在 ISO 图幅上画图、建模、导出 STEP，
 然后**把结果读回来**，告诉你站不站得住。两个 MCP 服务器、两个技能，外加一条命令 `dsh-sw-cad deliver`
-——它把「agent 说它做完了」变成一个有据可查的判定。
+——它把「agent 说它做完了」变成一个有据可查的判定。图要交给别人核的时候，还有第二种模式：材料、配合、
+表面处理必须取自取值表，而不是随便写。
 
 ```powershell
 dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
@@ -25,7 +26,8 @@ dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
 | `solidworks` MCP 服务器 | 66 个工具藏在检索入口后面，COM | 上游 [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill)，安装时克隆，commit 钉死 |
 | `solidworks-automation` 技能 | 66 个 Python 模块：`sw_*.py` COM 封装、OCCT/FEA/DFM、GB/T 出图子技能 | 同上 |
 | `autocad-mcp-pro` 技能 | 怎么驱动 AutoCAD MCP：图层纪律、ISO 7200 标题栏、真实标注实体、交付门禁 | **本仓库写的**——上游没有 AutoCAD 技能 |
-| `dsh-sw-cad` CLI | install、doctor、where、serve、**deliver** | **本仓库写的** |
+| `dsh-sw-cad` CLI | install、doctor、where、serve、**deliver**、**mode** | **本仓库写的** |
+| `lib/standards.json` | 半交付模式判定用的取值表：配合、材料牌号、热处理、表面处理、Ra 数系 | **本仓库写的** |
 | `patches/` | 两个上游缺陷的修复，已向上游提 PR | **本仓库写的** |
 
 上游代码不 vendor。安装器去拉 PyPI 包、按钉死的 commit 克隆技能，所以代码归属仍在上游，你拿到的是它

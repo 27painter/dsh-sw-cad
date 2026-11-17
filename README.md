@@ -11,7 +11,8 @@ English | [中文](README.zh.md)
 A dsh / Codex plugin that lets an agent drive **AutoCAD and SolidWorks** for real: draw on an ISO sheet,
 model a part, export STEP, and then **read the result back** and say whether it holds up. Two MCP servers,
 two skills, and one command — `dsh-sw-cad deliver` — that turns "the agent says it finished" into a
-verdict you can check.
+verdict you can check. When the drawing has to be checked by someone else, a second profile also holds the
+fits, material and surface finish to a table instead of trusting them.
 
 ```powershell
 dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
@@ -26,7 +27,8 @@ dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
 | `solidworks` MCP server | 66 tools behind a search entry, COM | upstream [wzyn20051216/solidworks-automation-skill](https://github.com/wzyn20051216/solidworks-automation-skill), cloned at install, pinned |
 | `solidworks-automation` skill | 66 Python modules: `sw_*.py` COM wrappers, OCCT/FEA/DFM, GB/T drawing sub-skill | same upstream |
 | `autocad-mcp-pro` skill | How to drive the AutoCAD MCP: layer discipline, ISO 7200 title block, real dimension entities, the delivery gate | **authored here** — upstream ships no AutoCAD skill |
-| `dsh-sw-cad` CLI | install, doctor, where, serve, **deliver** | **authored here** |
+| `dsh-sw-cad` CLI | install, doctor, where, serve, **deliver**, **mode** | **authored here** |
+| `lib/standards.json` | The value table half-delivery mode judges against: fits, material grades, heat and surface treatment, the Ra series | **authored here** |
 | `patches/` | Two upstream defects fixed, offered upstream as PRs | **authored here** |
 
 Nothing upstream is vendored. The installer fetches the PyPI package and clones the skill at a pinned
