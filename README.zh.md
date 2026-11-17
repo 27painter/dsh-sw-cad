@@ -380,6 +380,53 @@ codex mcp list
 `sw_search_tools` 用中文「健康检查」能命中 `solidworks_health_check`，`sw_call_tool` 把它送到运行中的
 `solidworks_health_check` 转发给了真实运行的 SolidWorks 2026。
 
+## 交付检查
+
+两条路的收尾不一样。AutoCAD 侧是 `drawing_finalize`——8 步验证器，**验证失败抛错而不是返回**，所以模型
+没法在图纸坏掉的情况下宣称完成。SolidWorks 侧是要四个预览图加一份 review report，然后相信模型真的看了。
+`deliver` 是两边共用的收尾：它读回这次产出的文件，撑不住就返回非零。
+
+```powershell
+dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
+```
+
+| 类型 | 真正读了什么 |
+|---|---|
+| `.dxf` | 用 ezdxf 解析：modelspace 里的 `DIMENSION` 实体、图层表、`$INSUNITS`、图纸空间里到底有没有东西、标题栏线索 |
+| `.dwg` | 只读文件头——`AC1032` 这类版本标记；数实体需要转换器 |
+| `.pdf` | PyMuPDF：页面尺寸对照 ISO 216（A4/A3/A2/A1/A0），以及文字层是不是真的 |
+| `.step` | 把 `FILE_SCHEMA` 解析成 AP203/214/242，再数实体和 `CARTESIAN_POINT`。AP203 会告警：它丢颜色和装配结构 |
+| `.sldprt` / `.sldasm` | 只看存在、大小和文件签名。**不验几何**——读原生零件需要打开软件 |
+| `*_review_report.json` | `evaluation.status == pass` 且没有问题项 |
+
+它会写出 `delivery.json`（或用 `--out` 指定）：每个文件带 SHA-256、每项检查带原因、最后给一个判定。
+退出码 0 表示站得住，1 表示站不住。**空目录算失败**——什么都没产出的任务绝不该报成功。
+
+失败时是长这样，这正是它存在的理由：
+
+```
+drawing  empty.dxf  18470 B
+  FAIL drawing.dimensions     0 DIMENSION entities in modelspace
+  FAIL drawing.units          $INSUNITS=0 (unitless)
+  FAIL drawing.sheets         no sheet has anything on it; nothing frames the drawing
+step     old.step  1779 B
+  warn step.pmi               AP203 drops colour and assembly structure; use AP214 or AP242
+  FAIL step.entities          40 entities, 40 CARTESIAN_POINTs
+report   part_review_report.json  101 B
+  FAIL review.status          evaluation.status='fail'
+verdict: fail  (5 failure(s), 1 warning(s))
+```
+
+有两样它**不检查**，仍然要人看：公差配合（`H7/g6`）和材料／热处理／表面处理。工具允许模型随便填，
+这里也没有标准表可以对照——声称查了，就成了这条命令本来要抓的那种错误。
+
+它跑在 SolidWorks 那个 venv 上（ezdxf 和 PyMuPDF 都在里面）。依赖缺失时降级成带原因的告警，不会崩，
+也不会静默放过。`test/deliver.test.mjs` 覆盖四件事：完整交付通过、review report 失败则失败、空目录失败、
+`--require drawing` 在没有图纸时失败。
+
+完整规则和 JSON 结构见 [`docs/delivery.md`](docs/delivery.md)。AutoCAD 技能里已经写进这条（工作流第 6 步）；
+SolidWorks 技能是上游文本、本仓库不改，所以那条路要自己触发——写进任务指令，或者放进脚本最后一步。
+
 ## 设计说明
 
 **1. discovery 模式是这套配置的核心。** 242 个工具定义全量广告是 83,732 token。discovery 模式下客户端只看到

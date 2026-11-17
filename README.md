@@ -401,6 +401,59 @@ Discovery finds `gear_draw_spur_front_view` / `keyway_draw_keyed_bore` by keywor
 runs it against a live SolidWorks 2026. `dsh --dump-config` loads both rows from this package; the
 SolidWorks preflight passes.
 
+## Delivery check
+
+The two skills end differently. The AutoCAD side calls `drawing_finalize` — an eight-step validator that
+raises instead of returning, so a model cannot claim success over a broken drawing. The SolidWorks side
+asks for four previews and a review report, and trusts the model to look at them. `deliver` is the shared
+ending: it reads whatever the job produced and exits non-zero when it does not hold up.
+
+```powershell
+dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
+```
+
+| kind | what is actually read |
+|---|---|
+| `.dxf` | parsed with ezdxf: `DIMENSION` entities in modelspace, the layer table, `$INSUNITS`, whether any paper-space layout has anything on it, and a title-block hint |
+| `.dwg` | header only — the `AC1032`-style version tag; counting entities needs a converter |
+| `.pdf` | PyMuPDF: page size against ISO 216 (A4/A3/A2/A1/A0), and whether the text layer is real |
+| `.step` | `FILE_SCHEMA` resolved to AP203/214/242, plus entity and `CARTESIAN_POINT` counts. AP203 warns: it drops colour and assembly structure |
+| `.sldprt` / `.sldasm` | presence, size and file signature. Geometry is not checked — reading a native part needs the application |
+| `*_review_report.json` | `evaluation.status == pass`, and no issues |
+
+It writes `delivery.json` (or `--out`) with every file, its SHA-256, every check and its reason, and a
+verdict. Exit 0 means the delivery holds up; 1 means it does not. **An empty folder is a failure** — a job
+that produced nothing must never report success.
+
+A failed run reads like this, which is the point of it:
+
+```
+drawing  empty.dxf  18470 B
+  FAIL drawing.dimensions     0 DIMENSION entities in modelspace
+  FAIL drawing.units          $INSUNITS=0 (unitless)
+  FAIL drawing.sheets         no sheet has anything on it; nothing frames the drawing
+step     old.step  1779 B
+  warn step.pmi               AP203 drops colour and assembly structure; use AP214 or AP242
+  FAIL step.entities          40 entities, 40 CARTESIAN_POINTs
+report   part_review_report.json  101 B
+  FAIL review.status          evaluation.status='fail'
+verdict: fail  (5 failure(s), 1 warning(s))
+```
+
+Two things it does **not** check, and they still need a human: tolerance and fit values (`H7/g6`), and
+material / heat treatment / surface finish. The tools let a model type any of them and there is no
+standard table here to compare against — claiming otherwise would be the same mistake this command exists
+to catch.
+
+It runs on the SolidWorks venv, which is the one carrying ezdxf and PyMuPDF. If a dependency is missing the
+check downgrades to a warning with the reason, rather than crashing or passing silently.
+`test/deliver.test.mjs` covers the four cases that matter: a complete delivery passes, a failed review
+report fails, an empty folder fails, and `--require drawing` fails when there is no drawing.
+
+Full rules and the JSON shape are in [`docs/delivery.md`](docs/delivery.md). The AutoCAD skill ships the
+step (item 6 in its workflow); the SolidWorks skill is upstream text and is not modified here, so on that
+route the check has to be invoked — by the agent's instructions, or as the last step of your script.
+
 ## Design notes
 
 **1. Discovery mode is the whole trick.** 242 tool schemas cost 83,732 tokens if advertised. In discovery

@@ -1,6 +1,6 @@
 {
   "name": "dsh-sw-cad",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Drives the installed AutoCAD and SolidWorks desktop apps from dsh or Codex: two on-demand skills plus two MCP servers, both using their upstream's own tool discovery (2 and 3 entry tools instead of 242 and 66).",
   "type": "module",
   "license": "MIT",
@@ -71,6 +71,7 @@
   },
   "scripts": {
     "check": "node bin/dsh-sw-cad.mjs doctor",
-    "test": "node test/plugin.test.mjs"
+    "test": "node test/plugin.test.mjs && node test/deliver.test.mjs",
+    "deliver": "node bin/dsh-sw-cad.mjs deliver"
   }
 }

@@ -34,6 +34,9 @@ const HELP = `dsh-sw-cad ${PKG.version}
                                install the upstream AutoCAD MCP and SolidWorks
                                skill; only the missing parts are touched
   doctor                       report present/missing pieces, change nothing
+  deliver <dir|file>... [--require drawing,pdf] [--out delivery.json] [--json] [--quiet]
+                               check what a job produced and write delivery.json;
+                               exit 1 when it does not hold up
   where                        print the resolved paths
   version                      print the version
 
@@ -201,6 +204,20 @@ function cmdDoctor() {
   process.exit(res.status === 0 ? 0 : 1);
 }
 
+// The delivery check. Both CAD routes end here: whatever the skills produced,
+// this reads it back and decides whether it holds up. It runs the interpreter
+// the SolidWorks side already installed, because that venv is the one with
+// ezdxf and PyMuPDF in it.
+function cmdDeliver(argv) {
+  const script = path.join(PKG_ROOT, "lib", "deliver.py");
+  if (!exists(script)) die(`deliver.py is missing from the package at ${script}`);
+  const layout = resolveLayout();
+  const python = [layout.pySw, layout.python].find((candidate) => candidate && exists(candidate)) || "python";
+  const res = spawnSync(python, [script, ...argv], { stdio: "inherit" });
+  if (res.error) die(`could not run ${python}: ${res.error.message}`);
+  process.exit(res.status === null ? 1 : res.status);
+}
+
 function cmdWhere() {
   const layout = resolveLayout();
   const rows = {
@@ -238,6 +255,9 @@ switch (cmd) {
     break;
   case "doctor":
     cmdDoctor();
+    break;
+  case "deliver":
+    cmdDeliver(rest);
     break;
   case "where":
     cmdWhere();

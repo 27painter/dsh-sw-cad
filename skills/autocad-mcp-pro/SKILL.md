@@ -47,6 +47,7 @@ metadata: { "os": ["win32"], "requires": { "anyBins": ["python", "py"], "pythonP
 3. **齿轮/键槽/剖面线**：用参数化工具 `gear_draw_*` / `keyway_draw_*`，**禁止**用基本图元手画齿形。
 4. **标注**：用 `dimension_*` 生成真实 DIMENSION 实体，**禁止**用 text+leader 冒充尺寸。
 5. **收尾**：`drawing_finalize` 是 8 步验证器 + 保存 + 截图，**不过它不能宣称完成**（验证失败会抛错）；随后 `drawing_critique` 应返回 0 issues，并重开 DXF 复核几何、核对 PDF `/MediaBox` 幅面。**工具返回成功 ≠ 任务完成。**
+6. **交付门禁**：最后跑 `dsh-sw-cad deliver <输出目录> --require drawing,pdf`。它读回落盘的文件（DIMENSION 实体、`$INSUNITS`、图纸空间是否有内容、PDF 幅面与文字层），判定不是 `pass` 就不算交付，把失败项原样报给用户，不要自行绕过。公差配合与材料/热处理仍要人工确认——这条命令不查这些。
 
 ## 已验证能力要点
 
