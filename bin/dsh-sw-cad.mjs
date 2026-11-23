@@ -34,7 +34,7 @@ const HELP = `dsh-sw-cad ${PKG.version}
   install [--base <dir>] [--work <dir>] [--python <exe>] [--force] [--with-dsh-patch]
                                install the upstream AutoCAD MCP and SolidWorks
                                skill; only the missing parts are touched
-  doctor                       report present/missing pieces, change nothing
+  doctor [--plugin] [--soft]   report present/missing pieces, change nothing
   deliver <dir|file>... [--require drawing,pdf] [--profile normal|half] [--out delivery.json] [--json] [--quiet]
                                check what a job produced and write delivery.json;
                                exit 1 when it does not hold up
@@ -63,7 +63,7 @@ function powershell() {
   return exists(ps) ? ps : "powershell";
 }
 
-function runInstaller(layout, { check, force, dshPatch = false }) {
+function runInstaller(layout, { check, force, dshPatch = false, skipCodex = false }) {
   const script = path.join(PKG_ROOT, "bootstrap.ps1");
   if (!exists(script)) die(`bootstrap.ps1 is missing from the package at ${script}`);
   const args = [
@@ -78,6 +78,7 @@ function runInstaller(layout, { check, force, dshPatch = false }) {
   ];
   if (check) args.push("-Check");
   if (force) args.push("-Force");
+  if (skipCodex) args.push("-SkipCodex");
   // The bundle patch registers the two servers for dsh, so the installer only
   // writes ~/.dsh/cordis.patch.yml when the user explicitly asks for it.
   if (!dshPatch) args.push("-NoDshPatch");
@@ -92,11 +93,17 @@ function cmdServe(target) {
   }
   const layout = resolveLayout();
   const missing = missingPieces(layout, target);
+  const pluginMode = process.env.DSH_SW_CAD_CODEX_PLUGIN === "1";
 
   if (missing.length && process.env.SW_CAD_NO_AUTO_INSTALL !== "1") {
     log(`${target} needs ${missing.length} missing piece(s); installing them once.`);
     log("set SW_CAD_NO_AUTO_INSTALL=1 to disable this.");
-    const res = runInstaller(layout, { check: false, force: false, dshPatch: false });
+    const res = runInstaller(layout, {
+      check: false,
+      force: false,
+      dshPatch: false,
+      skipCodex: pluginMode,
+    });
     if (res.status !== 0) {
       log("install failed; the server will not start.");
       log(`run "dsh-sw-cad install" by hand to see the full output.`);
@@ -128,6 +135,9 @@ function serveAutocad(layout) {
     TOOL_PACKS: "all",
     DISCOVERY_MODE: "search",
     ALLOWED_PATHS: layout.workDir,
+    PYTHONUTF8: "1",
+    PYTHONIOENCODING: "utf-8",
+    NO_COLOR: "1",
   };
   relay(spawn(layout.acadExe, [], { env, stdio: "inherit" }), "autocad");
 }
@@ -135,7 +145,13 @@ function serveAutocad(layout) {
 function serveSolidworks(layout) {
   if (!exists(layout.swServer)) die(`SolidWorks server missing: ${layout.swServer}`);
   // Upstream does its own discovery now; no shim in between.
-  const env = { ...process.env, SW_MCP_DISCOVERY: "search" };
+  const env = {
+    ...process.env,
+    SW_MCP_DISCOVERY: "search",
+    PYTHONUTF8: "1",
+    PYTHONIOENCODING: "utf-8",
+    NO_COLOR: "1",
+  };
   relay(spawn(layout.pySw, [layout.swServer], { env, stdio: "inherit" }), "solidworks");
 }
 
@@ -178,9 +194,12 @@ function cmdInstall(argv) {
   log("installed without `dsh plugin add`? rerun with --with-dsh-patch.");
 }
 
-function cmdDoctor() {
+function cmdDoctor(argv) {
   const layout = resolveLayout();
+  const pluginMode = argv.includes("--plugin") || process.env.DSH_SW_CAD_CODEX_PLUGIN === "1";
+  const soft = argv.includes("--soft");
   log(`package  ${PKG_ROOT} (v${PKG.version})`);
+  log(`install  ${pluginMode ? "Codex plugin" : "manual / dsh"}`);
   log(`pinned   autocad-mcp-pro ${PINS.autocadMcp.version}, solidworks skill ${PINS.solidworksSkill.commit.slice(0, 12)}`);
 
   // Which sides actually have a CAD application to drive. Only these get
@@ -203,8 +222,11 @@ function cmdDoctor() {
     }
   }
   log(`config   ${exists(CONFIG_FILE) ? CONFIG_FILE : "(none yet)"}`);
-  const res = runInstaller(layout, { check: true, force: false });
-  process.exit(res.status === 0 ? 0 : 1);
+  const res = runInstaller(layout, { check: true, force: false, skipCodex: pluginMode });
+  if (res.status !== 0 && soft) {
+    log("preflight found missing pieces; the first CAD request will install them.");
+  }
+  process.exit(res.status === 0 || soft ? 0 : 1);
 }
 
 // The delivery check. Both CAD routes end here: whatever the skills produced,
@@ -282,7 +304,7 @@ switch (cmd) {
     cmdInstall(rest);
     break;
   case "doctor":
-    cmdDoctor();
+    cmdDoctor(rest);
     break;
   case "deliver":
     cmdDeliver(rest);

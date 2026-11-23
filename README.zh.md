@@ -27,6 +27,7 @@ dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
 | `solidworks-automation` 技能 | 66 个 Python 模块：`sw_*.py` COM 封装、OCCT/FEA/DFM、GB/T 出图子技能 | 同上 |
 | `autocad-mcp-pro` 技能 | 怎么驱动 AutoCAD MCP：图层纪律、ISO 7200 标题栏、真实标注实体、交付门禁 | **本仓库写的**——上游没有 AutoCAD 技能 |
 | `dsh-sw-cad` CLI | install、doctor、where、serve、**deliver**、**mode** | **本仓库写的** |
+| Codex 插件壳 | `.codex-plugin/plugin.json`、`.mcp.json`、两个按需技能、只读 `SessionStart` 预检 | **本仓库写的** |
 | `lib/standards.json` | 半交付模式判定用的取值表：配合、材料牌号、热处理、表面处理、Ra 数系 | **本仓库写的** |
 | `patches/` | 两个上游缺陷的修复，已向上游提 PR | **本仓库写的** |
 
@@ -35,9 +36,34 @@ dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
 
 ## 安装
 
-三条路，选一条。
+四条路，选一条。
 
-**1. 作为 dsh 插件**——一条命令装完。`package.json` 声明了 `dsh.bundle.patch`，dsh 会读 `cordis.patch.yml`，
+**1. 作为 Codex 插件**——从仓库自带的 marketplace 安装：
+
+```powershell
+codex plugin marketplace add 27painter/dsh-sw-cad --ref main
+codex plugin add dsh-sw-cad@dsh-sw-cad
+```
+
+开一个新的 Codex 任务，并在 Codex 询问时信任 `SessionStart` hook。这个 hook 只跑只读、不阻塞的
+`doctor --plugin --soft`，不安装任何东西。MCP 入口按需启动，第一次使用某一侧 CAD 时，包内的 `serve` 会安装钉死版本的上游；300 秒启动
+超时就是留给这次安装的。
+
+插件自带 manifest、MCP 声明、技能、hook 和图标。它从插件缓存目录运行
+`node ./bin/dsh-sw-cad.mjs`，不要求全局安装 `dsh-sw-cad`。
+
+Codex 插件无法在注册前探测本机装了哪个 CAD，所以两条 MCP 记录都会声明。只装一个 CAD 的机器要在
+`~/.codex/config.toml` 里关掉另一侧：
+
+```toml
+[plugins."dsh-sw-cad@dsh-sw-cad".mcp_servers.autocad]
+enabled = false
+```
+
+只装 AutoCAD 时，把 `autocad` 换成 `solidworks`。`codex-config.snippet.toml` 只服务非插件的
+npm 全局安装；不要和插件同时添加。
+
+**2. 作为 dsh 插件**——一条命令装完。`package.json` 声明了 `dsh.bundle.patch`，dsh 会读 `cordis.patch.yml`，
 里面只插一行：本包。首次加载时插件自己解析路径、缺什么装什么，然后用绝对路径注册两个 MCP 客户端。
 装不成它会抛错并指出缺的是哪一项，而不是注册两条注定起不来的记录。
 
@@ -45,7 +71,7 @@ dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
 dsh plugin --profile web add dsh-sw-cad
 ```
 
-**2. npm 全局**——结果一样，另外把 CLI 放进 PATH：
+**3. npm 全局**——结果一样，另外把 CLI 放进 PATH：
 
 ```bash
 npm install -g dsh-sw-cad
@@ -53,7 +79,7 @@ dsh-sw-cad install
 dsh-sw-cad doctor
 ```
 
-**3. 从仓库装**——不需要 npm，也是唯一能用到 `bootstrap.ps1 -Check` 的方式。它会检查十项，只补缺的：
+**4. 从仓库装**——不需要 npm，也是唯一能用到 `bootstrap.ps1 -Check` 的方式。它会检查十项，只补缺的：
 
 ```powershell
 git clone https://github.com/27painter/dsh-sw-cad.git
@@ -63,18 +89,18 @@ cd dsh-sw-cad
 ```
 
 > [!WARNING]
-> 第 3 条也会写 `~/.dsh/cordis.patch.yml`。如果插件也装了，那就是同一对服务器、同一个 `serverName`
+> 第 4 条也会写 `~/.dsh/cordis.patch.yml`。如果 dsh 插件也装了，那就是同一对服务器、同一个 `serverName`
 > 被注册两次，dsh 会拒绝重复，会话起不来。两条路选一条；用插件的话，让那个文件保持 `[]`。
 
-**前提**：Windows 10/11，装了 AutoCAD 和/或 SolidWorks，Python ≥ 3.11，以及 dsh 或 Codex。第 1、2 条
-还要 Node ≥ 20。Git 可选——git 被拦时安装器会退回 codeload zip。
+**前提**：Windows 10/11，装了 AutoCAD 和/或 SolidWorks，Python ≥ 3.11，以及 dsh 或 Codex。Codex 插件、
+dsh 插件和 npm 三条路还要 Node ≥ 20。Git 可选——git 被拦时安装器会退回 codeload zip。
 
 两个上游项目自己的安装说明（手工装、或排查安装问题时看）原样留在
 [`docs/upstream-install.md`](docs/upstream-install.md)。
 
-**只装了一个 CAD 的机器**只会注册那一个服务器。插件在注册前查 COM 注册表（`lib/probe.py`，不会启动
-任何一个应用），两个都没有就什么都不注册，并在日志里说明，而不是给你一堆注定失败的工具。
-`SW_CAD_DISABLE=autocad` 可以把这个判断变成设置项。
+**只装了一个 CAD 的机器**四条路都能用，差别只有注册方式。dsh 插件在注册前查 COM 注册表
+（`lib/probe.py`，不会启动任何一个应用），只注册真正能工作的那一侧；`SW_CAD_DISABLE=autocad` 可以把
+这个判断变成设置项。Codex 插件的两条记录是静态的，用上面的 `config.toml` 块关掉不用的那一侧。
 
 > [!IMPORTANT]
 > **先开 CAD，并且同用户启动。** COM 要跨一个被 Windows 按用户和完整性级别守护的进程边界。agent 以
@@ -197,7 +223,7 @@ dsh-sw-cad deliver D:\work\part-001 --profile half   # 单次覆盖
    │      ├─ solidworks-automation → sw_*.py → COM → SolidWorks
    │      └─ autocad-mcp-pro       → search_tools / call_tool → MCP → AutoCAD
    │
-   └─ MCP 服务器（cordis.patch.yml / codex config.toml）
+   └─ MCP 服务器（cordis.patch.yml / Codex 插件 .mcp.json）
           ├─ autocad    上游 discovery，2 个入口工具
           └─ solidworks 上游 discovery，3 个入口工具
 ```
@@ -218,6 +244,10 @@ dsh-sw-cad deliver D:\work\part-001 --profile half   # 单次覆盖
 `AutoCAD MCP Pro 3.4.11`、2 个入口工具，SolidWorks 自报 `solidworks_mcp` 1.30.0、3 个——并且
 `sw_call_tool` 用中文「健康检查」能打到运行中的 SolidWorks 2026。`dsh --dump-config` 两条记录都从本包加载。
 
+Codex 插件壳已经从本仓库的本地 marketplace 装进隔离的 `CODEX_HOME` 实测：`codex plugin list` 和
+`codex mcp list` 都把两条记录解析到插件缓存，`SessionStart` 用 `doctor --plugin` 完成，`npm run test:serve`
+打开两个包内入口——AutoCAD 返回 2 个工具，SolidWorks 返回 3 个。
+
 ## 出问题的时候
 
 | 现象 | 通常是什么 |
@@ -226,7 +256,10 @@ dsh-sw-cad deliver D:\work\part-001 --profile half   # 单次覆盖
 | AutoCAD 工具卡住，然后提到对话框 | AutoCAD 里有弹窗——许可提示、保存提示、崩溃恢复窗 |
 | 装了两条路之后 dsh 起不来 | 插件行和 `~/.dsh/cordis.patch.yml` 各注册了一次。留一个 |
 | `dsh --dump-config` 里没有记录 | bundle patch 没被读到：看 `package.json` 有没有声明 `dsh.bundle.patch` |
-| Codex 列不出技能 | junction 要在 `~/.codex/skills\` 下；Codex 得支持 skills |
+| Codex 列不出技能 | 跑 `codex plugin list`，确认 `dsh-sw-cad` 已安装并启用，再开新任务；非插件手工安装才用 `~/.codex/skills\` 下的 junction |
+| 只装一个 CAD 时 Codex 有一条 MCP 记录报错 | 在 `~/.codex/config.toml` 的 `[plugins."dsh-sw-cad@dsh-sw-cad".mcp_servers.<side>]` 下关掉缺的那一侧 |
+| 第一次用 CAD 超时 | 上游可能还在安装。先跑 `doctor`，再重试；MCP 启动最多等 300 秒 |
+| Codex 的 `SessionStart` hook 没跑 | 插件 hook 需要显式信任。在 Codex 里查看并信任，然后开新任务 |
 | AutoCAD 截图是空白 | 窗口被隐藏或最小化了。几何仍然可以用 API 核 |
 | `sw_call_tool` 说工具名不认识 | 它只认目录里的名字，先跑 `sw_search_tools` |
 | `sw_search_tools` 搜不出东西 | 服务器在 `full` 模式，没有检索入口——检查 `SW_MCP_DISCOVERY` |
@@ -240,10 +273,12 @@ dsh-sw-cad doctor                              # 只读，缺东西退出码 1
 dsh-sw-cad where                               # 服务器会用到的每个路径
 dsh --profile headless --dump-config           # dsh 看见两条记录
 python patches\apply_patches.py --check        # 只读，补丁漂了退出码 1
-node bin\dsh-sw-cad.mjs serve solidworks       # JSON-RPC 握手，应为 3 个入口工具
-node bin\dsh-sw-cad.mjs serve autocad          # 应为 2 个入口工具
-npm test                                       # 插件注册 + 6 个交付检查用例
-codex mcp list                                 # Codex 侧
+npm run test:serve                             # JSON-RPC 握手，应为 2 + 3 个入口工具
+npm test                                       # dsh 注册、Codex manifest、6 个交付检查用例
+codex plugin list                              # Codex 看见 dsh-sw-cad@dsh-sw-cad
+codex mcp list                                 # autocad 和 solidworks 两条记录
+codex mcp get autocad                          # 解析后的命令、cwd、超时
+codex mcp get solidworks
 ```
 
 ## 来源

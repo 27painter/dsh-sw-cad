@@ -28,6 +28,7 @@ dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
 | `solidworks-automation` skill | 66 Python modules: `sw_*.py` COM wrappers, OCCT/FEA/DFM, GB/T drawing sub-skill | same upstream |
 | `autocad-mcp-pro` skill | How to drive the AutoCAD MCP: layer discipline, ISO 7200 title block, real dimension entities, the delivery gate | **authored here** — upstream ships no AutoCAD skill |
 | `dsh-sw-cad` CLI | install, doctor, where, serve, **deliver**, **mode** | **authored here** |
+| Codex plugin shell | `.codex-plugin/plugin.json`, `.mcp.json`, two lazy skills, and a read-only `SessionStart` preflight | **authored here** |
 | `lib/standards.json` | The value table half-delivery mode judges against: fits, material grades, heat and surface treatment, the Ra series | **authored here** |
 | `patches/` | Two upstream defects fixed, offered upstream as PRs | **authored here** |
 
@@ -36,9 +37,35 @@ commit, so upstream keeps ownership of its code and you get its current release.
 
 ## Install
 
-Three routes. Pick one.
+Four routes. Pick one.
 
-**1. As a dsh plugin** — the whole install is one line; `package.json` declares `dsh.bundle.patch`, so dsh
+**1. As a Codex plugin** — install it from the repository's marketplace:
+
+```powershell
+codex plugin marketplace add 27painter/dsh-sw-cad --ref main
+codex plugin add dsh-sw-cad@dsh-sw-cad
+```
+
+Start a new Codex task and approve the `SessionStart` hook when Codex asks. The hook runs the read-only,
+non-blocking `doctor --plugin --soft`; it does not install anything. The MCP entry starts on demand, and its packaged `serve` command
+installs the pinned upstream the first time a CAD side is used. The 300-second startup timeout leaves room
+for that first install.
+
+The plugin ships its own manifest, MCP declaration, skills, hook, and icon. It runs
+`node ./bin/dsh-sw-cad.mjs` from the installed plugin cache, so a global `dsh-sw-cad` command is not needed.
+
+Codex cannot probe which CAD exists before registering plugin MCP rows. Both are declared. On a machine with
+only one CAD, disable the other side in `~/.codex/config.toml`:
+
+```toml
+[plugins."dsh-sw-cad@dsh-sw-cad".mcp_servers.autocad]
+enabled = false
+```
+
+Use the same block with `solidworks` when only AutoCAD is installed. The manual
+`codex-config.snippet.toml` is for a non-plugin, npm-global setup; do not add it beside the plugin.
+
+**2. As a dsh plugin** — the whole install is one line; `package.json` declares `dsh.bundle.patch`, so dsh
 loads `cordis.patch.yml`, which inserts one row: this package. On first load the plugin resolves its paths,
 installs the pinned upstream servers if they are missing, then registers both MCP clients with absolute
 paths. If that cannot succeed it throws with the failing path instead of registering rows that fail silently.
@@ -47,7 +74,7 @@ paths. If that cannot succeed it throws with the failing path instead of registe
 dsh plugin --profile web add dsh-sw-cad
 ```
 
-**2. npm, global** — same result, plus the CLI on PATH:
+**3. npm, global** — same result, plus the CLI on PATH:
 
 ```bash
 npm install -g dsh-sw-cad
@@ -55,7 +82,7 @@ dsh-sw-cad install
 dsh-sw-cad doctor
 ```
 
-**3. From a checkout** — no npm needed, and the only route that gives you `bootstrap.ps1 -Check`, which
+**4. From a checkout** — no npm needed, and the only route that gives you `bootstrap.ps1 -Check`, which
 inspects ten things and repairs only what is missing:
 
 ```powershell
@@ -66,20 +93,21 @@ cd dsh-sw-cad
 ```
 
 > [!WARNING]
-> Route 3 also writes `~/.dsh/cordis.patch.yml`. With the plugin installed that is a second registration
+> Route 4 also writes `~/.dsh/cordis.patch.yml`. With the dsh plugin installed that is a second registration
 > of the same two servers under the same `serverName`, and dsh refuses the duplicate — the session fails to
 > start. Use one route or the other; with the plugin, keep that file at `[]`.
 
 **Prerequisites:** Windows 10/11 with AutoCAD and/or SolidWorks, Python ≥ 3.11, and dsh or Codex. Node ≥ 20
-for routes 1 and 2. Git optional — the installer falls back to a codeload zip when git is blocked.
+for the Codex plugin, dsh plugin, and npm routes. Git optional — the installer falls back to a codeload zip
+when git is blocked.
 
 The two upstream projects' own install instructions, kept verbatim for debugging a hand install, are in
 [`docs/upstream-install.md`](docs/upstream-install.md).
 
-**A machine with only one CAD** registers only that server. The plugin checks the COM registry before
-registering anything (`lib/probe.py`; it does not launch either application), so a machine with neither
-registers nothing and says so, rather than offering tools that could only fail. `SW_CAD_DISABLE=autocad`
-turns that decision into a setting.
+**A machine with only one CAD** works in every route, with one difference. The dsh plugin checks the COM
+registry before registering anything (`lib/probe.py`; it does not launch either application), so it registers
+only the sides that can work. `SW_CAD_DISABLE=autocad` turns that decision into a setting. In the Codex
+plugin both rows are static, so disable the unused server with the `config.toml` block above.
 
 > [!IMPORTANT]
 > **Start AutoCAD / SolidWorks first, as the same user.** COM crosses a process boundary that Windows
@@ -216,7 +244,7 @@ you speak natural language
    │      ├─ solidworks-automation → sw_*.py → COM → SolidWorks
    │      └─ autocad-mcp-pro       → search_tools / call_tool → MCP → AutoCAD
    │
-   └─ MCP servers (cordis.patch.yml / codex config.toml)
+   └─ MCP servers (cordis.patch.yml / Codex plugin .mcp.json)
           ├─ autocad    upstream discovery, 2 entry tools
           └─ solidworks upstream discovery, 3 entry tools
 ```
@@ -239,6 +267,11 @@ returns the live layer table; the SolidWorks side reports `status: ok` with the 
 `sw_call_tool` with the Chinese query "健康检查" reaches `solidworks_health_check` against a live
 SolidWorks 2026. `dsh --dump-config` loads both rows from this package.
 
+The Codex plugin shell was installed from this repository's local marketplace into an isolated
+`CODEX_HOME`. `codex plugin list` and `codex mcp list` resolved both rows to the plugin cache,
+`SessionStart` completed with `doctor --plugin`, and `npm run test:serve` opened both packaged entries:
+AutoCAD reported 2 tools, SolidWorks 3.
+
 ## When something goes wrong
 
 | Symptom | What it usually is |
@@ -247,7 +280,10 @@ SolidWorks 2026. `dsh --dump-config` loads both rows from this package.
 | AutoCAD tools hang, then mention a modal dialog | A dialog is open in AutoCAD — a licence prompt, a save prompt, a recovery pane |
 | `dsh` fails to start after installing two ways | Both a plugin row and a `~/.dsh/cordis.patch.yml` entry. Keep one |
 | `dsh --dump-config` shows no rows | The bundle patch was not picked up: check `package.json` declares `dsh.bundle.patch` |
-| Codex lists no skills | Junctions under `~/.codex/skills\`; Codex must support skills |
+| Codex lists no skills | Run `codex plugin list`, confirm `dsh-sw-cad` is installed and enabled, then start a new task. Manual non-plugin installs use junctions under `~/.codex/skills\` |
+| A Codex MCP row fails on a one-CAD machine | Disable the missing side under `[plugins."dsh-sw-cad@dsh-sw-cad".mcp_servers.<side>]` in `~/.codex/config.toml` |
+| The first CAD request times out | The upstream install may still be running. Run `doctor`, then retry; MCP startup is allowed 300 seconds |
+| The Codex `SessionStart` hook does not run | Plugin hooks require explicit trust. Review and trust it in Codex, then start a new task |
 | AutoCAD screenshot is blank | The window is hidden or minimised. Geometry is still verifiable through the API |
 | `sw_call_tool` rejects a name | It only accepts names from the catalog; run `sw_search_tools` first |
 | `sw_search_tools` returns nothing useful | The server is in `full` mode, so there is no search entry — check `SW_MCP_DISCOVERY` |
@@ -261,10 +297,12 @@ dsh-sw-cad doctor                              # read-only, exit 1 when somethin
 dsh-sw-cad where                               # every path the servers will use
 dsh --profile headless --dump-config           # dsh sees both rows
 python patches\apply_patches.py --check        # read-only, exit 1 when a patch drifted
-node bin\dsh-sw-cad.mjs serve solidworks       # JSON-RPC handshake, expects 3 entry tools
-node bin\dsh-sw-cad.mjs serve autocad          # expects 2 entry tools
-npm test                                       # plugin wiring + 6 delivery-check cases
-codex mcp list                                 # Codex side
+npm run test:serve                             # JSON-RPC handshake, expects 2 + 3 entry tools
+npm test                                       # dsh wiring, Codex manifest, and 6 delivery cases
+codex plugin list                              # Codex sees dsh-sw-cad@dsh-sw-cad
+codex mcp list                                 # autocad and solidworks rows
+codex mcp get autocad                          # resolved command, cwd, and timeouts
+codex mcp get solidworks
 ```
 
 ## Provenance

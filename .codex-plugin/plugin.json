@@ -1,0 +1,49 @@
+{
+  "name": "dsh-sw-cad",
+  "version": "2.1.0",
+  "description": "Drive installed AutoCAD and SolidWorks desktop apps from Codex, with on-demand tool discovery, two skills, and a file-level delivery check.",
+  "author": {
+    "name": "27painter",
+    "url": "https://github.com/27painter"
+  },
+  "homepage": "https://github.com/27painter/dsh-sw-cad",
+  "repository": "https://github.com/27painter/dsh-sw-cad",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "dsh",
+    "mcp",
+    "autocad",
+    "solidworks",
+    "cad",
+    "dwg",
+    "dxf",
+    "step",
+    "windows"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "dsh-sw-cad",
+    "shortDescription": "Draw and model with AutoCAD and SolidWorks",
+    "longDescription": "Use the installed AutoCAD and SolidWorks desktop applications through compact MCP discovery entries, load CAD-specific skills on demand, and verify exported drawings, PDFs, STEP files, and review reports with dsh-sw-cad deliver.",
+    "developerName": "27painter",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/27painter/dsh-sw-cad",
+    "defaultPrompt": [
+      "Draw an ISO mechanical drawing in AutoCAD",
+      "Model a part in SolidWorks and export it as STEP",
+      "Check this CAD delivery folder with dsh-sw-cad"
+    ],
+    "composerIcon": "./assets/icon-180.png",
+    "logo": "./assets/icon-180.png",
+    "brandColor": "#E05A3A",
+    "screenshots": []
+  }
+}

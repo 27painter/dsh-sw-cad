@@ -8,6 +8,19 @@ metadata: { "os": ["win32"], "requires": { "anyBins": ["python", "py"], "pythonP
 
 通过 MCP 工具操控本机 AutoCAD（2026/2027 已验证，2023–2025 预期可用）。工具不预加载：服务器处于 **discovery 模式**，会话中只有 `search_tools` 和 `call_tool` 两个元工具（空闲约 356 token），完整 242 工具目录按需检索。
 
+## Codex 插件中的 CLI 调用
+
+本技能随 Codex 插件安装时，`dsh-sw-cad` 不一定在 PATH 中。命令示例里的 `dsh-sw-cad` 有两种等价调用：
+
+1. 已装 npm 全局包时，直接运行 `dsh-sw-cad`。
+2. 仅装 Codex 插件时，从本 `SKILL.md` 的绝对路径向上两级得到插件根目录，再运行：
+
+```powershell
+node "<插件根目录>\bin\dsh-sw-cad.mjs" <子命令>
+```
+
+例如交付检查用 `node "<插件根目录>\bin\dsh-sw-cad.mjs" deliver <目录> --require drawing,pdf`。
+
 ## 环境预检（每次任务开始）
 
 1. **AutoCAD 是否已运行**：COM 实控需要。没开就提示用户启动，或降级 ezdxf 无头引擎（仅 DXF，无渲染）并在结果中注明。

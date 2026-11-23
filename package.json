@@ -1,6 +1,6 @@
 {
   "name": "dsh-sw-cad",
-  "version": "1.5.0",
+  "version": "2.1.0",
   "description": "Drives the installed AutoCAD and SolidWorks desktop apps from dsh or Codex: two on-demand skills plus two MCP servers, both using their upstream's own tool discovery (2 and 3 entry tools instead of 242 and 66).",
   "type": "module",
   "license": "MIT",
@@ -38,12 +38,16 @@
     "@deepseek-ai/dsh-mcp-client": ">=0.2.0-rc.1 <0.3.0-0"
   },
   "files": [
+    ".agents/",
+    ".codex-plugin/",
+    ".mcp.json",
     "bin/",
     "lib/",
     "skills/",
     "docs/",
     "assets/",
     "patches/",
+    "hooks/",
     "cordis.patch.yml",
     "bootstrap.ps1",
     "install.ps1",
@@ -67,11 +71,13 @@
     "win32"
   ],
   "devDependencies": {
-    "@deepseek-ai/dsh-mcp-client": "0.2.0-rc.2"
+    "@deepseek-ai/dsh-mcp-client": "0.2.0-rc.2",
+    "@modelcontextprotocol/client": "2.0.0"
   },
   "scripts": {
     "check": "node bin/dsh-sw-cad.mjs doctor",
-    "test": "node test/plugin.test.mjs && node test/deliver.test.mjs",
+    "test": "node test/plugin.test.mjs && node test/deliver.test.mjs && node test/codex-plugin.test.mjs",
+    "test:serve": "node test/serve-handshake.mjs autocad && node test/serve-handshake.mjs solidworks",
     "deliver": "node bin/dsh-sw-cad.mjs deliver"
   }
 }

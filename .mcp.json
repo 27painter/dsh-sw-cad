@@ -1,0 +1,35 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "autocad": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "./bin/dsh-sw-cad.mjs",
+        "serve",
+        "autocad"
+      ],
+      "cwd": "./",
+      "env": {
+        "DSH_SW_CAD_CODEX_PLUGIN": "1"
+      },
+      "startup_timeout_sec": 300,
+      "tool_timeout_sec": 180
+    },
+    "solidworks": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "./bin/dsh-sw-cad.mjs",
+        "serve",
+        "solidworks"
+      ],
+      "cwd": "./",
+      "env": {
+        "DSH_SW_CAD_CODEX_PLUGIN": "1"
+      },
+      "startup_timeout_sec": 300,
+      "tool_timeout_sec": 300
+    }
+  }
+}
