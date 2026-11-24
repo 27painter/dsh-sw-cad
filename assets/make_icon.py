@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Generate assets/icon-180.png -- a square tile that reads at 96px."""
+"""Generate assets/icon.png (512) and assets/icon-180.png (180).
+
+512 is what plugin catalogs ask for; 180 is what the Codex plugin interface
+points at today. Both are written from the same 720px master, so they never
+drift apart.
+"""
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 S = 720          # draw big, downscale for clean edges
-OUT = 180
+OUT_SIZES = (512, 180)
 BG = (17, 21, 26, 255)        # near-black slate
 CORAL = (216, 90, 48, 255)    # same accent as the README chart
 TEAL = (29, 158, 117, 255)
@@ -31,7 +36,9 @@ d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=TEAL)
 r2 = int(S * 0.042)
 d.ellipse([cx - r2, cy - r2, cx + r2, cy + r2], fill=BG)
 
-img = img.resize((OUT, OUT), Image.LANCZOS)
-out = Path(__file__).resolve().parent / "icon-180.png"
-img.save(out, "PNG", optimize=True)
-print("wrote", out, out.stat().st_size, "bytes")
+for out_size in OUT_SIZES:
+    scaled = img.resize((out_size, out_size), Image.LANCZOS)
+    name = "icon.png" if out_size == 512 else f"icon-{out_size}.png"
+    out = Path(__file__).resolve().parent / name
+    scaled.save(out, "PNG", optimize=True)
+    print("wrote", out, out.stat().st_size, "bytes")

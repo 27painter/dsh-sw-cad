@@ -41,8 +41,8 @@
       "Model a part in SolidWorks and export it as STEP",
       "Check this CAD delivery folder with dsh-sw-cad"
     ],
-    "composerIcon": "./assets/icon-180.png",
-    "logo": "./assets/icon-180.png",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png",
     "brandColor": "#E05A3A",
     "screenshots": []
   }

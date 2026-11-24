@@ -13,7 +13,8 @@ mcp-shim/sw_catalog.json
 
 # npm / packaging
 node_modules/
-package-lock.json
+# package-lock.json is committed on purpose: plugin catalogs require a checked-in
+# dependency lockfile, and CI installs from it.
 pnpm-lock.yaml
 *.tgz
 
