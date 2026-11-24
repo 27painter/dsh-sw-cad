@@ -177,14 +177,25 @@ else {
 Say "[7/7] Registering the dsh bundle in profile '$DshProfile'..."
 $kitDir = $PSScriptRoot
 
-# AutoCAD skill is authored in this kit (upstream has none); install if missing
+# The AutoCAD skill is authored in this kit (upstream has none). Link the
+# installed copy to it instead of copying SKILL.md: a copy goes stale silently
+# the next time this kit is updated, and the model keeps loading a workflow that
+# no longer matches the code. One source, one behaviour.
 $acadSkillDir = Join-Path $SkillsDir "autocad-mcp-pro"
-$acadSkillSrc = Join-Path $kitDir "skills\autocad-mcp-pro\SKILL.md"
+$acadSkillSrc = Join-Path $kitDir "skills\autocad-mcp-pro"
 if (-not (Test-Path -LiteralPath (Join-Path $acadSkillDir "SKILL.md"))) {
-    New-Item -ItemType Directory -Force -Path $acadSkillDir | Out-Null
     if (Test-Path -LiteralPath $acadSkillSrc) {
-        Copy-Item -LiteralPath $acadSkillSrc -Destination (Join-Path $acadSkillDir "SKILL.md") -Force
-        Write-Host "    autocad-mcp-pro skill installed"
+        New-Item -ItemType Directory -Force -Path $SkillsDir | Out-Null
+        if (Test-Path -LiteralPath $acadSkillDir) { Remove-Item -LiteralPath $acadSkillDir -Recurse -Force }
+        try {
+            New-Item -ItemType Junction -Path $acadSkillDir -Target $acadSkillSrc -ErrorAction Stop | Out-Null
+            Write-Host "    autocad-mcp-pro skill linked to the kit (single source)"
+        }
+        catch {
+            New-Item -ItemType Directory -Force -Path $acadSkillDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $acadSkillSrc "SKILL.md") -Destination (Join-Path $acadSkillDir "SKILL.md") -Force
+            Write-Host "    autocad-mcp-pro skill copied (junction unavailable)"
+        }
     }
 }
 

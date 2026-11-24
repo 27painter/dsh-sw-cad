@@ -109,6 +109,11 @@ registry before registering anything (`lib/probe.py`; it does not launch either 
 only the sides that can work. `SW_CAD_DISABLE=autocad` turns that decision into a setting. In the Codex
 plugin both rows are static, so disable the unused server with the `config.toml` block above.
 
+**A machine with neither CAD** does not fail the plugin load either: one log line says there is nothing to
+drive, and no MCP row is registered. `deliver` only reads files and never starts a CAD application, so that
+half still works. The probe runs before the install step, so an empty machine never installs the upstream
+servers for nothing.
+
 > [!IMPORTANT]
 > **Start AutoCAD / SolidWorks first, as the same user.** COM crosses a process boundary that Windows
 > guards by user and integrity level. An agent started elevated while the CAD app runs normally (or the

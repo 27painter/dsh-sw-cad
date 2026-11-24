@@ -220,24 +220,46 @@ function Invoke-Detect {
         return
     }
 
-    # 7. Codex junctions
-    $cSw = Join-Path $CodexSkills "solidworks-automation\SKILL.md"
-    $cAcad = Join-Path $CodexSkills "autocad-mcp-pro\SKILL.md"
-    if ((Test-Path -LiteralPath $cSw) -and (Test-Path -LiteralPath $cAcad)) {
-        Add-Item "light" "codex-skills-junction" "OK" $CodexSkills $null
-    }
-    else {
-        Add-Item "light" "codex-skills-junction" "MISSING" $CodexSkills $null
+    # 7/8. Codex wiring comes in two shapes, and both are valid:
+    #   (a) the plugin — a marketplace entry plus [plugins."dsh-sw-cad@..."].
+    #       It ships its own skills and its own MCP entries, so nothing needs to
+    #       be junctioned or appended to config.toml;
+    #   (b) the manual layout — junctions into ~/.codex/skills plus
+    #       [mcp_servers.autocad] / [mcp_servers.solidworks] in config.toml.
+    # Checking only (b) made `doctor` report a permanent false MISSING on every
+    # plugin install, which turned a check that must stay meaningful into noise.
+    $codexPlugin = $false
+    if (Test-Path -LiteralPath $CodexConfig) {
+        $cfgText = Get-Content -LiteralPath $CodexConfig -Raw -ErrorAction SilentlyContinue
+        if ($cfgText -match '(?m)^\[plugins\."dsh-sw-cad@[^"]+"\]' -or
+            $cfgText -match '(?m)^\[marketplaces\.dsh-sw-cad\]') {
+            $codexPlugin = $true
+        }
     }
 
-    # 8. Codex config entries
-    $needCodex = @("[mcp_servers.autocad]", "[mcp_servers.solidworks]")
-    $missCodex = @(Test-FileContains $CodexConfig $needCodex)
-    if ($missCodex.Count -eq 0) {
-        Add-Item "light" "codex-config" "OK" $CodexConfig $null
+    if ($codexPlugin) {
+        Add-Item "light" "codex-plugin" "OK" "installed as a Codex plugin; skills and MCP entries come from the plugin" $null
     }
     else {
-        Add-Item "light" "codex-config" "MISSING" ("absent: " + ($missCodex -join ", ")) $null
+        # 7. Codex junctions
+        $cSw = Join-Path $CodexSkills "solidworks-automation\SKILL.md"
+        $cAcad = Join-Path $CodexSkills "autocad-mcp-pro\SKILL.md"
+        if ((Test-Path -LiteralPath $cSw) -and (Test-Path -LiteralPath $cAcad)) {
+            Add-Item "light" "codex-skills-junction" "OK" $CodexSkills $null
+        }
+        else {
+            Add-Item "light" "codex-skills-junction" "MISSING" $CodexSkills $null
+        }
+
+        # 8. Codex config entries
+        $needCodex = @("[mcp_servers.autocad]", "[mcp_servers.solidworks]")
+        $missCodex = @(Test-FileContains $CodexConfig $needCodex)
+        if ($missCodex.Count -eq 0) {
+            Add-Item "light" "codex-config" "OK" $CodexConfig $null
+        }
+        else {
+            Add-Item "light" "codex-config" "MISSING" ("absent: " + ($missCodex -join ", ")) $null
+        }
     }
 
     # 9. upstream fixes this bundle depends on (see patches/README.md)

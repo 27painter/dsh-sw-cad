@@ -182,7 +182,11 @@ function cmdInstall(argv) {
   if (res.status !== 0) {
     die(`installer exited with ${res.status}; see the output above.`);
   }
+  // Merge, do not replace: `mode half` lives in the same file, and a plain
+  // overwrite here silently reset the delivery profile back to the default the
+  // next time anyone ran `install`.
   writeConfig({
+    ...(readConfig() || {}),
     baseDir: layout.baseDir,
     workDir: layout.workDir,
     python: layout.python,

@@ -80,30 +80,37 @@ const noSw = attempt({ SW_CAD_DISABLE: "solidworks", SW_CAD_ASSUME: "autocad,sol
 assert.deepEqual(noSw.registered.map((r) => r.cfg.serverName), ["autocad"]);
 console.log("solidworks off  -> autocad only");
 
-// --- nothing left to drive: throw, do not register rows that cannot work ---
+// --- nothing left to drive: register nothing, but do not fail the plugin -----
+// `deliver` never starts a CAD application, so a machine with neither one still
+// has a working half of this bundle. Failing the load would take it away.
 const none = attempt({ SW_CAD_DISABLE: "autocad,solidworks", SW_CAD_ASSUME: "autocad,solidworks" });
 assert.equal(none.registered.length, 0, "must not register rows that cannot start");
-assert.ok(none.err, "must throw when nothing is left to drive");
-assert.match(none.err.message, /neither AutoCAD nor SolidWorks/i);
-console.log("neither off     -> throws, registers nothing");
+assert.equal(none.err, null, "having no CAD is not an error; deliver still works");
+console.log("both off        -> registers nothing, no error");
 
-// Detection path: with nothing assumed and nothing registered, refuse rather
-// than register a row that cannot start. Skipped on a machine that has CAD.
+// Detection path: with nothing assumed and nothing detected, register nothing
+// rather than a row that cannot start. On a machine with CAD this registers
+// both, which is the other half of the same guarantee.
 const bare = attempt({ SW_CAD_DISABLE: undefined, SW_CAD_ASSUME: undefined });
 if (bare.registered.length === 0) {
-  assert.ok(bare.err, "must throw when nothing is detected");
-  console.log("nothing detected -> throws, registers nothing");
+  assert.equal(bare.err, null, "must not throw when nothing is detected");
+  console.log("nothing detected -> registers nothing, no error");
 } else {
   console.log("nothing detected -> skipped (this machine has CAD installed)");
 }
 
 // --- a machine with no upstream installed is an error, not a silent skip ----
+// SW_CAD_ASSUME stands in for a registered CAD: apply() probes before it
+// installs, so without a target there would be nothing to fetch and no error to
+// check. This is the case that must still fail loudly.
 const empty = fs.mkdtempSync(path.join(os.tmpdir(), "swcad-test-"));
 try {
   const saved = process.env.SW_CAD_BASE;
   const savedNoInstall = process.env.SW_CAD_NO_AUTO_INSTALL;
+  const savedAssume = process.env.SW_CAD_ASSUME;
   process.env.SW_CAD_BASE = empty;
   process.env.SW_CAD_NO_AUTO_INSTALL = "1";
+  process.env.SW_CAD_ASSUME = "autocad";
   const registered = [];
   const ctx = { plugin: (m, c) => registered.push(c) };
   let err = null;
@@ -116,10 +123,10 @@ try {
   assert.ok(err, "must throw when the upstream is missing and auto-install is off");
   assert.match(err.message, /upstream missing/i);
   console.log("no upstream     -> throws, registers nothing");
-  if (saved === undefined) delete process.env.SW_CAD_BASE;
-  else process.env.SW_CAD_BASE = saved;
-  if (savedNoInstall === undefined) delete process.env.SW_CAD_NO_AUTO_INSTALL;
-  else process.env.SW_CAD_NO_AUTO_INSTALL = savedNoInstall;
+  const restore = (k, v) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; };
+  restore("SW_CAD_BASE", saved);
+  restore("SW_CAD_NO_AUTO_INSTALL", savedNoInstall);
+  restore("SW_CAD_ASSUME", savedAssume);
 } finally {
   fs.rmSync(empty, { recursive: true, force: true });
 }
