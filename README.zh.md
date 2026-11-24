@@ -105,6 +105,25 @@ dsh 插件和 npm 三条路还要 Node ≥ 20。Git 可选——git 被拦时安
 **一个 CAD 都没装的机器**也不会让插件加载失败：一行日志说明「没有可驱动的应用」，一条 MCP 记录都不注册。
 `deliver` 只读文件、从不启动 CAD，所以这条校验照样能用。判断顺序是先探测再安装，因此空机器上不会白装一遍上游。
 
+### 在任意 MCP 客户端里用
+
+不装 dsh、不装 Codex 也能用。两个都是普通的 stdio MCP 服务器，任何认 `mcpServers` 映射的客户端都能拉起它们。
+用 `npm install -g dsh-sw-cad` 装过的话：
+
+```json
+{
+  "mcpServers": {
+    "autocad": { "command": "dsh-sw-cad", "args": ["serve", "autocad"] },
+    "solidworks": { "command": "dsh-sw-cad", "args": ["serve", "solidworks"] }
+  }
+}
+```
+
+没全局装的话，把 `"dsh-sw-cad"` 换成 `"node"`，并把 `bin/dsh-sw-cad.mjs` 的绝对路径放到 `args` 第一位。
+其余路径全由 `serve` 自己解析，缺上游时首次调用会装，所以这一整块只有那一个路径跟机器有关。
+
+只保留你真正装了 CAD 的那一条。`dsh-sw-cad deliver` 完全不需要客户端——它是事后对文件夹跑的一条命令。
+
 > [!IMPORTANT]
 > **先开 CAD，并且同用户启动。** COM 要跨一个被 Windows 按用户和完整性级别守护的进程边界。agent 以
 > 管理员身份启动、CAD 以普通身份运行（或反过来），它什么也连不上，现象看起来只是「工具什么都没干」。

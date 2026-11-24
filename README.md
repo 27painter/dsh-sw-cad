@@ -114,6 +114,27 @@ drive, and no MCP row is registered. `deliver` only reads files and never starts
 half still works. The probe runs before the install step, so an empty machine never installs the upstream
 servers for nothing.
 
+### Use the servers from any MCP client
+
+dsh and Codex are not required. Both are ordinary stdio MCP servers, so any client that takes an
+`mcpServers` map can start them. With `npm install -g dsh-sw-cad`:
+
+```json
+{
+  "mcpServers": {
+    "autocad": { "command": "dsh-sw-cad", "args": ["serve", "autocad"] },
+    "solidworks": { "command": "dsh-sw-cad", "args": ["serve", "solidworks"] }
+  }
+}
+```
+
+Not installed globally? Replace `"dsh-sw-cad"` with `"node"` and put the absolute path to
+`bin/dsh-sw-cad.mjs` first in `args`. `serve` resolves every other path itself and installs the pinned
+upstream on first use, so that one path is the only machine-specific detail in the block.
+
+Keep only the server whose CAD application is installed. `dsh-sw-cad deliver` needs no client at all — it is
+a command you run on a folder afterwards.
+
 > [!IMPORTANT]
 > **Start AutoCAD / SolidWorks first, as the same user.** COM crosses a process boundary that Windows
 > guards by user and integrity level. An agent started elevated while the CAD app runs normally (or the
