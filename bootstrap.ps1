@@ -84,6 +84,19 @@ function Add-Item {
     }
 }
 
+function Get-DeliverPython {
+    # `deliver` runs on the SolidWorks venv when it exists, then the AutoCAD
+    # venv, then whatever `python` resolves to. The check must use the same one:
+    # asking a bare `python` can pass while deliver, which runs somewhere else,
+    # still fails on this machine.
+    foreach ($candidate in @($PySw, $PyAcad)) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+    }
+    $onPath = Get-Command python -ErrorAction SilentlyContinue
+    if ($onPath) { return $onPath.Source }
+    return $null
+}
+
 function Test-FileContains {
     param([string]$Path, [string[]]$Needles)
     $missing = @()
@@ -180,6 +193,43 @@ function Invoke-Detect {
     }
     else {
         Add-Item "core" "sw-skill" "MISSING" $SkillDest $null
+    }
+
+    # 4b. The delivery check now lives in cad-deliver-mcp. Without it
+    # `dsh-sw-cad deliver` can only refuse. It sits in the light group because
+    # fixing it is one pip command, not an upstream install: putting it in core
+    # would drag the whole installer along for a single package.
+    $deliverPy = Get-DeliverPython
+    if (-not $deliverPy) {
+        Add-Item "light" "cad-deliver" "MISSING" "no interpreter available to check (see python above)" $null
+    }
+    else {
+        # `python -c` writes a traceback to stderr when the import fails, and
+        # PowerShell would surface that as a native-command error and stop the
+        # script. Swallow every stream and read the exit code instead.
+        $deliverOk = $false
+        try {
+            & $deliverPy -c "import cad_deliver" *> $null
+            $deliverOk = ($LASTEXITCODE -eq 0)
+        }
+        catch {
+            $deliverOk = $false
+        }
+
+        if ($deliverOk) {
+            $deliverVer = $null
+            try {
+                $deliverVer = (& $deliverPy -c "import cad_deliver; print(cad_deliver.__version__)" 2>$null)
+            }
+            catch {
+                $deliverVer = $null
+            }
+            if (-not $deliverVer) { $deliverVer = "(version unknown)" }
+            Add-Item "light" "cad-deliver" "OK" "v$deliverVer at $deliverPy" $null
+        }
+        else {
+            Add-Item "light" "cad-deliver" "MISSING" "not importable in $deliverPy; fix: pip install cad-deliver-mcp" $null
+        }
     }
 
     # 5. dsh skills junction
@@ -344,6 +394,22 @@ function Repair-CodexConfig {
     Write-Host "  appended $Snippet to $CodexConfig"
 }
 
+function Repair-DeliverCore {
+    $py = Get-DeliverPython
+    if (-not $py) {
+        Write-Host "  no interpreter to install into; fix the python check first"
+        return
+    }
+    Write-Host "  installing cad-deliver-mcp into $py"
+    # Not on PyPI yet, so install from the repository. Same command the error
+    # message tells a human to run by hand.
+    & $py -m pip install --quiet --disable-pip-version-check "cad-deliver-mcp"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  pip install failed; install it by hand into ${py}:"
+        Write-Host "    $py -m pip install cad-deliver-mcp"
+    }
+}
+
 # ---------------------------------------------------------------- main
 
 Write-Host ""
@@ -376,7 +442,7 @@ if ($coreBad.Count -gt 0) {
 }
 
 # light repairs, in dependency order
-$fixOrder = @("dsh-skills-junction", "dsh-config",
+$fixOrder = @("cad-deliver", "dsh-skills-junction", "dsh-config",
               "codex-skills-junction", "codex-config", "upstream-patches")
 foreach ($name in $fixOrder) {
     $item = $script:items | Where-Object { $_.Name -eq $name -and $_.State -ne "OK" } | Select-Object -First 1
@@ -384,6 +450,7 @@ foreach ($name in $fixOrder) {
     Write-Host ""
     Write-Host "Fixing $name ($($item.State)):"
     switch ($name) {
+        "cad-deliver" { Repair-DeliverCore }
         "dsh-skills-junction" { Repair-DshJunction }
         "dsh-config" { Invoke-Installer }
         "codex-skills-junction" { Repair-CodexJunction }

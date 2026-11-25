@@ -1,6 +1,6 @@
 {
   "name": "dsh-sw-cad",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Drive installed AutoCAD and SolidWorks desktop apps from Codex, with on-demand tool discovery, two skills, and a file-level delivery check.",
   "author": {
     "name": "27painter",

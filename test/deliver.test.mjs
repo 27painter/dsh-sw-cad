@@ -220,11 +220,23 @@ assert.equal(nodepRun.status, 2, `a missing reader must exit 2: ${nodepRun.stdou
 const nodepReport = JSON.parse(fs.readFileSync(nodepOut, "utf8"));
 assert.equal(nodepReport.verdict, "unknown", "no dependency must never be reported as pass");
 assert.ok(nodepReport.counts.blocked > 0, "the unreadable file must be counted as not checked");
+// `-S` hides every site-package, so what goes missing here is the cad-deliver-mcp
+// package itself rather than ezdxf inside it. Either way the contract is the
+// same: a report exists, and it says the delivery was not judged.
 assert.ok(
-  nodepReport.blocked.some((item) => item.id === "dxf.parsed"),
-  "dxf.parsed is the check that could not run",
+  nodepReport.blocked.some(
+    (item) => item.id === "dxf.parsed" || item.id === "cad_deliver.imported",
+  ),
+  `a blocked check must be named, got ${JSON.stringify(nodepReport.blocked.map((b) => b.id))}`,
 );
-assert.match(nodepRun.stdout, /unknown is not a pass/, "the report must say why 2 is not 0");
+// When the package itself is missing the message goes to stderr (stdout carries
+// the report path only); when only a reader is missing it comes from the CLI on
+// stdout. Either way the run must explain why 2 is not 0.
+assert.match(
+  `${nodepRun.stdout}\n${nodepRun.stderr}`,
+  /unknown is not a pass|NOT judged/,
+  "the report must say why 2 is not 0",
+);
 
 // 8. A DWG needs a converter, so it cannot be judged either. The header is real
 //    and the size passes; what is missing is the ability to read it.
