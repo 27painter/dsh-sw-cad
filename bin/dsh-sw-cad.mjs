@@ -37,7 +37,8 @@ const HELP = `dsh-sw-cad ${PKG.version}
   doctor [--plugin] [--soft]   report present/missing pieces, change nothing
   deliver <dir|file>... [--require drawing,pdf] [--profile normal|half] [--out delivery.json] [--json] [--quiet]
                                check what a job produced and write delivery.json;
-                               exit 1 when it does not hold up
+                               exit 0 it holds up, 1 it does not, 2 could not judge
+                               (2 means a reader was missing - never a pass)
   mode [normal|half]           show or set the delivery profile that deliver uses
                                by default (saved in ~/.dsh/sw-cad.json)
   where                        print the resolved paths

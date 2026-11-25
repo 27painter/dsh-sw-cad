@@ -28,8 +28,11 @@ dsh-sw-cad deliver D:\work\part-001 --out D:\work\delivery.json --json
 - **错误（exit 1）**：文件缺失、DXF 无尺寸实体、`$INSUNITS=0`、图纸空间空、PDF 非 ISO A 幅面或没有文字层、
   STEP 头部认不出、STEP 包围盒退化（所有点在同一位置）、有图纸却没写比例、review report 不是 pass、
   `--require` 的类型缺席、**目录里什么都没有**。
-- **告警（不影响 exit）**：AP203、DWG 数不了实体、原生零件只验存在性、没有标题栏线索、图纸幅面不是 ISO A、
-  线宽只有一种、中文文字没有配 CJK 字体、尺寸文字互相压住、依赖缺失导致某项没查。
+- **判不了（exit 2，verdict `unknown`）**：需要读文件的能力缺失——没装 ezdxf（DXF 读不了）、没装 PyMuPDF
+  （PDF 读不了）、手头没有转换器（DWG 读不了）。**这种情形绝不报 pass**：跳过的检查不能算通过，否则调用方
+  看到 `pass` 就真的不再看了。`delivery.json` 的 `counts.blocked` 与 `blocked[]` 写明哪一项没跑成、为什么。
+- **告警（不影响 exit）**：AP203、原生零件只验存在性、没有标题栏线索、图纸幅面不是 ISO A、
+  线宽只有一种、中文文字没有配 CJK 字体、尺寸文字互相压住。
 - 告警一律带原因，写进 `delivery.json`，不会静默放过。
 
 ### 图纸检查逐项
@@ -47,6 +50,33 @@ dsh-sw-cad deliver D:\work\part-001 --out D:\work\delivery.json --json
 | `drawing.lineweights` | 图层里至少有 2 种显式线宽（粗实线/细实线） | 告警 |
 | `drawing.fonts` | 出现中文时，用到的文字样式必须指向仿宋/宋体/黑体/雅黑这类字体 | 告警 |
 | `drawing.dim_overlap` | 尺寸文字中点两两距离 < 2mm 的配对数为 0 | 告警 |
+| `drawing.dim_values` | 被显式改写的标注文字，是否与几何实测值一致（容差 0.2%）。标 120、实际 118 会在这里被抓住 | 错误 |
+
+`drawing.dim_values` 只看**被改写过**的文字：空字符串和 `<>` 都让程序自己打印实测值，不存在不一致。
+样式带 `dimlfac≠1` 的标注会跳过比对并写进 detail——那时分不清是文字错还是因子错，`drawing.scale` 会单独报因子。
+
+### DWG 输入
+
+DWG 需要转换器才能读。`deliver` 按这个顺序找一个：环境变量 `DSH_SW_CAD_DWG_CONVERTER`（命令模板，用
+`{in}` / `{out}` 占位）→ LibreDWG 的 `dwg2dxf` → ODA File Converter 的安装路径。找到就转成临时 DXF，**然后
+按 DXF 完整检查**，并在结果里标一条 `dwg.converted` 告警说明用了哪个转换器。
+
+一个都找不到时，`drawing.entities` 记为 `blocked`，verdict 是 `unknown`（exit 2）——**不是 pass**。
+
+### 报告检查逐项
+
+`*_review_report.json` 是模型自己写的，所以 `evaluation.status` 本身只是声明。这些检查要它拿出证据：
+
+| id | 读什么 | 级别 |
+|---|---|---|
+| `review.status` | `evaluation.status` 是 `pass` | 错误 |
+| `review.issues` | `evaluation.issues` 为空 | 错误 |
+| `review.checks` | 报告里有非空的 `checks` 明细块——只有结论没有过程的报告不算 | 错误 |
+| `review.previews` | `previews_created`、`previews_not_blank` 若存在，都为真 | 错误 |
+| `review.outputs` | `expected_outputs_exist` 若存在，为真 | 错误 |
+| `review.previews_on_disk` | 声称生成了预览图时，报告旁边必须真有图片（bmp/png/jpg） | 错误 |
+| `review.manual` | `manual_review_required=true`：文件读得过，但没人验收过几何 | 告警 |
+| `review.score` | `evaluation.score` 有值就记录 | 告警 |
 
 ### STEP 检查逐项
 

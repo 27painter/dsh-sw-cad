@@ -160,8 +160,9 @@ ISO A3 图幅，带标题栏和尺寸，存到 D:\AutoCad 并导出 PDF。
 这一节是上游没有的部分。
 
 两条路的收尾不一样。AutoCAD 侧调 `drawing_finalize`——8 步验证器，**失败抛错而不是返回**，模型没法在
-图纸坏掉的情况下宣称完成。SolidWorks 侧是要四个预览图加一份 review report，然后相信模型真的看了。
-`deliver` 是两边共用的收尾：它不启动任何 CAD，只读落盘的文件，撑不住就返回非零。
+图纸坏掉的情况下宣称完成。SolidWorks 侧要四个预览图加一份 review report；`deliver` 不再只是读那个 report
+的 `status` 字段，它要求报告里有 `checks` 明细、声称生成了预览图就必须真有图片落在旁边——否则报告只是一句
+话，不是证据。`deliver` 是两边共用的收尾：它不启动任何 CAD，只读落盘的文件，撑不住就返回非零。
 
 ```powershell
 dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
@@ -170,12 +171,12 @@ dsh-sw-cad deliver D:\work\part-001 --out D:\work\delivery.json --json
 
 | 类型 | 真正读了什么 |
 |---|---|
-| `.dxf` | ezdxf：`DIMENSION` 实体、图层表、`$INSUNITS`、图纸空间有没有东西、出图幅面对 ISO 216、有没有写明比例/SCALE、线宽层级、中文文字用的字体、互相压住的尺寸文字、标题栏线索 |
-| `.dwg` | 只读文件头 `AC1032` 这类版本标记；数实体需要转换器 |
+| `.dxf` | ezdxf：`DIMENSION` 实体、图层表、`$INSUNITS`、图纸空间有没有东西、出图幅面对 ISO 216、有没有写明比例/SCALE、线宽层级、中文文字用的字体、互相压住的尺寸文字、标题栏线索，以及**被改写的标注文字与几何实测值是否一致**（标 120、实际 118 会判失败） |
+| `.dwg` | 文件头认版本；找到转换器（`DSH_SW_CAD_DWG_CONVERTER` / `dwg2dxf` / ODA）就转成 DXF，**按 DXF 全套检查**，并标一条 `dwg.converted`；找不到转换器判 `unknown`，不判 pass |
 | `.pdf` | PyMuPDF：页面尺寸对 ISO 216，以及文字层是不是真的 |
 | `.step` | `FILE_SCHEMA` 解析成 AP203/214/242，数实体和 `CARTESIAN_POINT`，再用原始坐标算包围盒——能抓到"零件被缩放过"和"导出里没有几何"。AP203 会告警：它丢颜色和装配结构 |
 | `.sldprt` / `.sldasm` | 只看存在、大小、文件签名。**不验几何**——那需要打开软件 |
-| `*_review_report.json` | `evaluation.status == pass` 且没有问题项 |
+| `*_review_report.json` | `evaluation.status == pass` 与空 `issues`，**加上**：非空的 `checks` 明细、`previews_created`/`previews_not_blank`/`expected_outputs_exist` 为真、声称生成了预览图时旁边必须真有图片。只有结论没有过程的报告不算通过 |
 
 失败时是长这样，这正是它存在的理由：
 
@@ -192,10 +193,16 @@ report   part_review_report.json  101 B
 verdict: fail  (5 failure(s), 1 warning(s))
 ```
 
-退出码 0 表示站得住，1 表示站不住。**空目录算失败**——什么都没产出的任务绝不该报成功。`delivery.json`
+**退出码有三种，不是两种**：`0` 站得住，`1` 站不住，`2` 判不了。`2` 出现在需要读文件的能力缺失时——
+没装 ezdxf 就判不了 DXF，没装 PyMuPDF 就判不了 PDF，手头没有转换器就判不了 DWG。这种情况下 verdict 是
+`unknown`，**不是 pass**：一个跳过的检查不能算通过，否则调用方看到 `pass` 就真的不再看了。`delivery.json`
+里 `counts.blocked` 和 `blocked[]` 写明是哪一项没跑成、为什么。
+
+**空目录算失败**——什么都没产出的任务绝不该报成功。`delivery.json`
 里每个文件带 SHA-256，所以「验的是这一版」是事实，不是靠文件名猜。
 
-告警不改退出码，但一定带原因：AP203、DWG 读不了实体、原生零件没打开、缺 Python 依赖、整张图只有一种线宽。
+告警不改退出码，但一定带原因：AP203、原生零件没打开、整张图只有一种线宽。**缺 Python 依赖不在此列**——
+它属于上面那类「判不了」，会让退出码变成 2。
 
 **它不查、也不会假装查的**：公差配合（`H7/g6`）、材料、热处理、表面处理、尺寸链闭不闭合、零件能不能
 加工。工具允许模型随便填，这里也没有标准表可以对照。`pass` 的意思是文件经得起读，**不是图纸可以下厂**。

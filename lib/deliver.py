@@ -21,11 +21,16 @@ wrong (nothing to check).
 from __future__ import annotations
 
 import argparse
+import atexit
+import glob
 import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import traceback
 from datetime import datetime, timezone
 
@@ -110,6 +115,96 @@ def sha256(path):
     return digest.hexdigest()
 
 
+# ------------------------------------------------------------------ DWG input
+#
+# A DWG cannot be parsed here: the format needs a converter we will not bundle.
+# What we can do is drive one that is already on the machine, so a DWG gets the
+# same treatment as a DXF instead of being waved through on its header.
+#
+# Order: an explicit override first (so a site can point at their own tool),
+# then LibreDWG's dwg2dxf, then an ODA File Converter installation.
+
+_CONVERT_TEMP = []
+
+
+def _cleanup_temp():
+    for folder in _CONVERT_TEMP:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+atexit.register(_cleanup_temp)
+
+
+def find_dwg_converter():
+    """Return (kind, command) for something that can turn a DWG into a DXF."""
+    override = os.environ.get("DSH_SW_CAD_DWG_CONVERTER", "").strip()
+    if override:
+        return ("configured", override)
+
+    dwg2dxf = shutil.which("dwg2dxf")
+    if dwg2dxf:
+        return ("libredwg", dwg2dxf)
+
+    for pattern in (
+        r"C:\Program Files\ODA\*\ODAFileConverter.exe",
+        r"C:\Program Files (x86)\ODA\*\ODAFileConverter.exe",
+        "/opt/ODA/ODAFileConverter/ODAFileConverter",
+        "/usr/bin/ODAFileConverter",
+    ):
+        hits = sorted(glob.glob(pattern))
+        if hits:
+            return ("oda", hits[-1])
+    return None
+
+
+def convert_dwg(path, converter):
+    """Convert one DWG to a DXF in a temporary folder. None when it fails."""
+    kind, command = converter
+    workdir = tempfile.mkdtemp(prefix="dsh-sw-cad-dwg-")
+    _CONVERT_TEMP.append(workdir)
+    source = os.path.join(workdir, "in")
+    outdir = os.path.join(workdir, "out")
+    os.makedirs(source)
+    os.makedirs(outdir)
+    stem = os.path.splitext(os.path.basename(path))[0]
+    copied = os.path.join(source, stem + ".dwg")
+    try:
+        shutil.copy2(path, copied)
+    except OSError:
+        return None
+
+    try:
+        if kind == "libredwg":
+            target = os.path.join(outdir, stem + ".dxf")
+            res = subprocess.run(
+                [command, copied, "-o", target],
+                capture_output=True, text=True, timeout=180,
+            )
+        elif kind == "oda":
+            res = subprocess.run(
+                [command, source, outdir, "ACAD2018", "DXF", "0", "1", "*.DWG"],
+                capture_output=True, text=True, timeout=300,
+            )
+        else:
+            # "configured": a command template, {in} and {out} substituted.
+            target = os.path.join(outdir, stem + ".dxf")
+            line = command.replace("{in}", copied).replace("{out}", target)
+            res = subprocess.run(line, shell=True, capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    candidates = sorted(
+        os.path.join(outdir, name)
+        for name in os.listdir(outdir)
+        if name.lower().endswith(".dxf")
+    )
+    if candidates and os.path.getsize(candidates[0]) > 0:
+        return candidates[0]
+    # A converter that exits 0 but writes nothing is still a failure.
+    _ = res
+    return None
+
+
 # ------------------------------------------------------------------ checks
 
 
@@ -130,20 +225,54 @@ def check_drawing(path, size):
                 f"format {version} (AutoCAD {known})" if known else f"first bytes are {version!r}, not a DWG version tag",
             )
         )
-        checks.append(
-            Check(
-                "drawing.entities",
-                True,
-                "not counted: reading DWG needs a converter, so entity and dimension counts are unchecked",
-                severity="warning",
+        converter = find_dwg_converter()
+        converted = convert_dwg(path, converter) if converter and known else None
+        if converted:
+            # From here the DWG is checked exactly like a DXF, because it now is
+            # one. Nothing below knows or cares that the input was a DWG.
+            checks.append(
+                Check(
+                    "dwg.converted",
+                    True,
+                    f"converted to DXF with {converter[0]} ({os.path.basename(converter[1])}); "
+                    "the checks below read the converted file",
+                    severity="warning",
+                )
             )
-        )
-        return checks
+            path = converted
+        else:
+            reason = (
+                "no DWG-to-DXF converter was found (install LibreDWG's dwg2dxf, ODA File Converter, "
+                "or set DSH_SW_CAD_DWG_CONVERTER to a command using {in} and {out})"
+                if not converter
+                else "the converter produced no DXF"
+            )
+            checks.append(
+                Check(
+                    "drawing.entities",
+                    False,
+                    f"not checked: {reason}, so entities, units, sheets and dimensions were not examined",
+                    severity="blocked",
+                )
+            )
+            return checks
 
     try:
         import ezdxf
     except Exception:
-        checks.append(Check("dxf.parsed", False, "ezdxf is not importable, so the DXF was not read", severity="warning"))
+        # A reader that is missing is not a pass. Reporting one here would tell
+        # the caller "this drawing holds up" while nothing was read at all — and
+        # the caller stops looking. This used to be a warning, which meant any
+        # DXF passed on a machine without ezdxf.
+        checks.append(
+            Check(
+                "dxf.parsed",
+                False,
+                "ezdxf is not importable, so this DXF was NOT checked "
+                "(install ezdxf, or run deliver with an interpreter that has it)",
+                severity="blocked",
+            )
+        )
         return checks
 
     try:
@@ -301,6 +430,83 @@ def check_drawing(path, size):
         )
     )
 
+    # A dimension whose text disagrees with the geometry is worse than a missing
+    # dimension: the drawing names a number the part does not have, and it looks
+    # authoritative while doing it. Only an overridden text can disagree — "<>"
+    # and an empty string both make the application print the measured value, so
+    # there is nothing to compare there.
+    number_re = re.compile(r"-?\d+(?:[.,]\d+)?")
+    mismatched = []
+    compared = 0
+    skipped_factor = 0
+    for entity in msp.query("DIMENSION"):
+        raw_text = entity.dxf.get("text", "")
+        if raw_text in ("", "<>"):
+            continue
+        dim_kind = entity.dimtype & 7  # the low 3 bits; the rest are flag bits
+        if dim_kind in (2, 5, 6):  # angular and ordinate report other quantities
+            continue
+        try:
+            measured = float(entity.get_measurement())
+        except Exception:
+            continue
+        style_name = entity.dxf.get("dimstyle", "Standard")
+        try:
+            factor = float(doc.dimstyles.get(style_name).dxf.get("dimlfac", 1.0))
+        except Exception:
+            factor = 1.0
+        # With a measurement factor in play the printed value is the geometry
+        # times that factor, and there is no way to tell from the file alone
+        # whether a disagreement is a wrong text or a wrong factor. Say so and
+        # leave it to drawing.scale, which already reports the factor.
+        if abs(factor - 1.0) > 1e-9:
+            skipped_factor += 1
+            continue
+        expected = measured
+        cleaned = raw_text.replace("%%c", "").replace("%%C", "")
+        numbers = number_re.findall(cleaned)
+        if not numbers:
+            continue
+        try:
+            shown = float(numbers[0].replace(",", "."))
+        except ValueError:
+            continue
+        compared += 1
+        tolerance = max(0.01, abs(expected) * 0.002)
+        if abs(shown - expected) > tolerance:
+            mismatched.append((entity.dxf.get("handle", "?"), shown, measured))
+    factor_note = (
+        f"; {skipped_factor} more skipped because their style has a dimlfac other than 1" if skipped_factor else ""
+    )
+    if mismatched:
+        preview = "; ".join(
+            f"handle {handle}: text says {shown:g}, geometry measures {measured:g}"
+            for handle, shown, measured in mismatched[:4]
+        )
+        more = f" (+{len(mismatched) - 4} more)" if len(mismatched) > 4 else ""
+        checks.append(
+            Check(
+                "drawing.dim_values",
+                False,
+                f"{len(mismatched)} of {compared} overridden dimension text(s) disagree with the geometry: "
+                f"{preview}{more}{factor_note}",
+            )
+        )
+    else:
+        checks.append(
+            Check(
+                "drawing.dim_values",
+                True,
+                (
+                    f"{compared} overridden dimension text(s), all within 0.2% of the measured geometry"
+                    if compared
+                    else "no dimension text was overridden, so every value comes from the geometry"
+                )
+                + factor_note,
+                severity="warning",
+            )
+        )
+
     # Chinese drawings are set in 仿宋 (or 宋体 for headings).  If the sheet
     # carries Chinese text and every style points at a Latin font, the plot
     # shows boxes on a machine without that font.
@@ -373,7 +579,15 @@ def check_pdf(path, size):
         try:
             import fitz
         except Exception:
-            checks.append(Check("pdf.parsed", False, "PyMuPDF is not importable, so the PDF was not read", severity="warning"))
+            checks.append(
+                Check(
+                    "pdf.parsed",
+                    False,
+                    "PyMuPDF is not importable, so this PDF was NOT checked "
+                    "(install pymupdf, or run deliver with an interpreter that has it)",
+                    severity="blocked",
+                )
+            )
             return checks
 
     try:
@@ -550,6 +764,95 @@ def check_review_report(path, size):
             f"{len(issues)} issue(s)" + (f": {issues[:3]}" if issues else ""),
         )
     )
+
+    # `evaluation.status` is written by the model that did the work. On its own
+    # it is a claim, not evidence: "status": "pass" costs one line and proves
+    # nothing. What follows asks for the artefacts behind the claim.
+    detail = report.get("checks")
+    has_detail = isinstance(detail, dict) and len(detail) > 0
+    checks.append(
+        Check(
+            "review.checks",
+            has_detail,
+            f"{len(detail)} self-review check(s): {', '.join(sorted(detail)[:4])}"
+            if has_detail
+            else "no 'checks' block: the report states a verdict but carries no self-review evidence",
+        )
+    )
+
+    if has_detail:
+        created = detail.get("previews_created")
+        not_blank = detail.get("previews_not_blank")
+        problems = []
+        if created is not None and not created:
+            problems.append("previews_created=false")
+        if not_blank is not None and not not_blank:
+            problems.append("previews_not_blank=false")
+        if created is not None or not_blank is not None:
+            checks.append(
+                Check(
+                    "review.previews",
+                    not problems,
+                    "previews_created={!r}, previews_not_blank={!r}".format(created, not_blank)
+                    + ("" if not problems else ": " + ", ".join(problems)),
+                )
+            )
+
+        outputs = detail.get("expected_outputs_exist")
+        if outputs is not None:
+            checks.append(
+                Check(
+                    "review.outputs",
+                    bool(outputs),
+                    f"expected_outputs_exist={outputs!r}",
+                )
+            )
+
+    # A preview that the report says was created has to exist somewhere. The
+    # reviewer writes them next to the report, so an empty folder next to a
+    # "previews_created: true" claim is the signature of a report nobody filled
+    # by looking at the model.
+    if has_detail and detail.get("previews_created"):
+        folder = os.path.dirname(os.path.abspath(path))
+        try:
+            images = [
+                name
+                for name in os.listdir(folder)
+                if name.lower().endswith((".bmp", ".png", ".jpg", ".jpeg"))
+            ]
+        except OSError:
+            images = []
+        checks.append(
+            Check(
+                "review.previews_on_disk",
+                len(images) > 0,
+                f"{len(images)} preview image(s) beside the report"
+                if images
+                else "the report claims previews_created=true but there is no image next to it",
+            )
+        )
+
+    # Upstream sets this on purpose: a structured report cannot replace a human
+    # accepting the geometry. It stays a warning because it is a known limit of
+    # the reviewer, not a defect in the delivery — but a pass must not be read as
+    # "someone looked at this".
+    manual = report.get("manual_review_required")
+    if manual is None:
+        manual = evaluation.get("manual_review_required")
+    if manual:
+        checks.append(
+            Check(
+                "review.manual",
+                False,
+                "the report sets manual_review_required=true: these files read back, but no human has accepted "
+                "the geometry",
+                severity="warning",
+            )
+        )
+
+    score = evaluation.get("score")
+    if isinstance(score, (int, float)) and not isinstance(score, bool):
+        checks.append(Check("review.score", True, f"evaluation.score={score:g}", severity="warning"))
     return checks
 
 
@@ -739,11 +1042,14 @@ def main(argv):
 
     failures = []
     warnings = []
+    blocked = []
     for entry in entries:
         for check in entry["checks"]:
             if check["ok"]:
                 continue
-            if check["severity"] == "warning":
+            if check["severity"] == "blocked":
+                blocked.append((entry["path"], check))
+            elif check["severity"] == "warning":
                 warnings.append((entry["path"], check))
             else:
                 failures.append((entry["path"], check))
@@ -758,7 +1064,17 @@ def main(argv):
             ("(delivery)", {"id": "delivery.empty", "detail": "no drawing, PDF, STEP or model in the target", "severity": "error"})
         )
 
-    verdict = "fail" if failures else "pass"
+    # Three answers, not two. "unknown" exists because a check that could not
+    # run is not a pass: calling it one tells the caller to stop looking, which
+    # is the worst failure this tool can have. Exit code 2 keeps it distinct
+    # from a real 1, so a script can tell "this delivery is bad" apart from
+    # "this machine cannot judge it".
+    if failures:
+        verdict = "fail"
+    elif blocked:
+        verdict = "unknown"
+    else:
+        verdict = "pass"
     not_checked = [
         "审签（设计/校对/审核/批准）",
         "尺寸链闭合",
@@ -777,7 +1093,11 @@ def main(argv):
             "checked": sum(1 for e in entries if e["kind"] != "other"),
             "failures": len(failures),
             "warnings": len(warnings),
+            "blocked": len(blocked),
         },
+        "blocked": [
+            {"path": path, "id": check["id"], "detail": check["detail"]} for path, check in blocked
+        ],
         "files": entries,
     }
 
@@ -792,15 +1112,29 @@ def main(argv):
                 continue
             print(f"{entry['kind']:<8} {os.path.basename(entry['path'])}  {entry['bytes']} B")
             for check in entry["checks"]:
-                mark = "ok  " if check["ok"] else ("warn" if check["severity"] == "warning" else "FAIL")
+                if check["ok"]:
+                    mark = "ok  "
+                elif check["severity"] == "blocked":
+                    mark = "BLOCK"
+                elif check["severity"] == "warning":
+                    mark = "warn"
+                else:
+                    mark = "FAIL"
                 print(f"  {mark} {check['id']:<22} {check['detail']}")
         if missing:
             print(f"\nmissing: {', '.join(missing)}")
     print(f"profile: {args.profile}" + ("  (values must come from lib/standards.json; 审签 and 尺寸链 still need a human)" if args.profile == "half" else ""))
-    print(f"verdict: {verdict}  ({len(failures)} failure(s), {len(warnings)} warning(s))  -> {out}")
+    print(f"verdict: {verdict}  ({len(failures)} failure(s), {len(warnings)} warning(s), {len(blocked)} not checked)  -> {out}")
+    if verdict == "unknown":
+        print(
+            "unknown is not a pass: a reader this check needs was missing, so part of the delivery was never examined. "
+            "Install the dependency (or run deliver with the venv interpreter) and judge again."
+        )
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
-    return 0 if verdict == "pass" else 1
+    if verdict == "pass":
+        return 0
+    return 2 if verdict == "unknown" else 1
 
 
 if __name__ == "__main__":

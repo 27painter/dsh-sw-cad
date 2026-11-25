@@ -178,8 +178,10 @@ This is the part that is not in the upstream projects.
 
 The two skills end differently. The AutoCAD side calls `drawing_finalize` — an eight-step validator that
 raises instead of returning, so a model cannot claim success over a broken drawing. The SolidWorks side
-asks for four previews and a review report, and trusts the model to look at them. `deliver` is the shared
-ending: it starts no CAD, reads what landed on disk, and exits non-zero when it does not hold up.
+asks for four previews and a review report; `deliver` no longer takes that report's `status` field at its
+word — it wants the `checks` block behind the verdict, and an image actually on disk whenever previews are
+claimed. A verdict without its evidence is a sentence, not a result. `deliver` is the shared ending: it
+starts no CAD, reads what landed on disk, and exits non-zero when it does not hold up.
 
 ```powershell
 dsh-sw-cad deliver D:\work\part-001 --require drawing,pdf
@@ -188,12 +190,12 @@ dsh-sw-cad deliver D:\work\part-001 --out D:\work\delivery.json --json
 
 | kind | what is actually read |
 |---|---|
-| `.dxf` | ezdxf: `DIMENSION` entities, layer table, `$INSUNITS`, whether a paper-space layout has anything on it, the plot sheet against ISO 216, whether 比例/SCALE is stated, line-weight levels, the font behind Chinese text, dimension texts that sit on top of each other, a title-block hint |
-| `.dwg` | header only — the `AC1032`-style version tag; counting entities needs a converter |
+| `.dxf` | ezdxf: `DIMENSION` entities, layer table, `$INSUNITS`, whether a paper-space layout has anything on it, the plot sheet against ISO 216, whether 比例/SCALE is stated, line-weight levels, the font behind Chinese text, dimension texts that sit on top of each other, a title-block hint, and **whether an overridden dimension text matches the geometry it annotates** (text says 120, line measures 118: fail) |
+| `.dwg` | the header names the version; when a converter is found (`DSH_SW_CAD_DWG_CONVERTER`, `dwg2dxf`, or ODA) it is converted to DXF and **checked in full** as a DXF, with a `dwg.converted` note. No converter means `unknown`, not pass |
 | `.pdf` | PyMuPDF: page size against ISO 216, and whether the text layer is real |
 | `.step` | `FILE_SCHEMA` resolved to AP203/214/242, entity and `CARTESIAN_POINT` counts, bounding box from the raw points — which catches a scaled part or an export with no geometry. AP203 warns: it drops colour and assembly structure |
 | `.sldprt` / `.sldasm` | presence, size, file signature. Geometry is not checked — that needs the application |
-| `*_review_report.json` | `evaluation.status == pass`, and no issues |
+| `*_review_report.json` | `evaluation.status == pass` with no issues, **plus**: a non-empty `checks` block, `previews_created` / `previews_not_blank` / `expected_outputs_exist` true where present, and an actual image on disk whenever previews are claimed. A verdict without its evidence does not pass |
 
 A failed run reads like this, which is the point:
 
@@ -210,12 +212,18 @@ report   part_review_report.json  101 B
 verdict: fail  (5 failure(s), 1 warning(s))
 ```
 
-Exit 0 means the delivery holds up, 1 means it does not. **An empty folder is a failure** — a job that
-produced nothing must never report success. Every file gets a SHA-256 in `delivery.json`, so "this is the
-version that was checked" is a fact rather than a filename.
+**Three exit codes, not two:** `0` the delivery holds up, `1` it does not, `2` it could not be judged. `2`
+means a reader was missing — no ezdxf, so a DXF cannot be read; no PyMuPDF, so a PDF cannot; no converter, so
+a DWG cannot. The verdict is `unknown` there, **never `pass`**: a check that was skipped must not be reported as
+one that succeeded, because the caller reads `pass` and stops looking. `counts.blocked` and `blocked[]` in
+`delivery.json` name each check that could not run and why.
 
-Warnings never change the exit code and always carry their reason: AP203, an unreadable DWG, a native part
-that was not opened, a missing Python dependency, a drawing with only one line weight.
+**An empty folder is a failure** — a job that produced nothing must never report success. Every file gets a
+SHA-256 in `delivery.json`, so "this is the version that was checked" is a fact rather than a filename.
+
+Warnings never change the exit code and always carry their reason: AP203, a native part that was not opened, a
+drawing with only one line weight. **A missing Python dependency is not in that list** — it is the `unknown`
+case above, and it exits 2.
 
 **What it does not check, and will not pretend to:** tolerance and fit values (`H7/g6`), material, heat
 treatment, surface finish, whether a dimension chain closes, whether the part can actually be machined.

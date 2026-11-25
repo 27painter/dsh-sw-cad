@@ -61,15 +61,25 @@ function deliver(dir, extra = []) {
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-sw-cad-deliver-"));
 
 // 1. A delivery that holds up: AP214 with real geometry, and a review report
-//    that says pass.
+//    that carries the self-review evidence behind its verdict — not just the
+//    verdict.
 const good = path.join(root, "good");
 fs.mkdirSync(good);
 stepFile(path.join(good, "part.step"), "AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }", 300);
 fs.writeFileSync(
   path.join(good, "part_review_report.json"),
-  JSON.stringify({ evaluation: { status: "pass", issues: [] } }),
+  JSON.stringify({
+    evaluation: { status: "pass", issues: [], score: 92 },
+    checks: {
+      previews_created: true,
+      previews_not_blank: true,
+      expected_outputs_exist: true,
+      feature_summary_available: true,
+    },
+  }),
   "utf8",
 );
+fs.writeFileSync(path.join(good, "part_isometric.bmp"), Buffer.alloc(2048, 7));
 const goodRun = deliver(good, ["--require", "step"]);
 assert.equal(goodRun.code, 0, `a complete delivery must pass:\n${goodRun.stdout}`);
 assert.equal(goodRun.report.verdict, "pass");
@@ -189,6 +199,159 @@ if (builtOk.status !== 0 || builtBad.status !== 0) {
   assert.equal(normalRun.code, 0, "normal profile must not judge standard values");
 }
 
+// 7. A reader that is missing must not turn into a pass. `-S` disables
+//    site-packages, so ezdxf is genuinely not importable while the script still
+//    runs — the exact state of a machine that installed the bundle without the
+//    Python dependencies. Before this case existed, every DXF passed there.
+const nodepDir = path.join(root, "nodep");
+fs.mkdirSync(nodepDir);
+fs.writeFileSync(
+  path.join(nodepDir, "blank.dxf"),
+  "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1032\n0\nENDSEC\n999\n" + "x".repeat(3000) + "\n0\nEOF\n",
+  "utf8",
+);
+const nodepOut = path.join(nodepDir, "delivery.json");
+const nodepRun = spawnSync(
+  PY,
+  ["-S", SCRIPT, nodepDir, "--out", nodepOut, "--require", "drawing"],
+  { encoding: "utf8" },
+);
+assert.equal(nodepRun.status, 2, `a missing reader must exit 2: ${nodepRun.stdout}`);
+const nodepReport = JSON.parse(fs.readFileSync(nodepOut, "utf8"));
+assert.equal(nodepReport.verdict, "unknown", "no dependency must never be reported as pass");
+assert.ok(nodepReport.counts.blocked > 0, "the unreadable file must be counted as not checked");
+assert.ok(
+  nodepReport.blocked.some((item) => item.id === "dxf.parsed"),
+  "dxf.parsed is the check that could not run",
+);
+assert.match(nodepRun.stdout, /unknown is not a pass/, "the report must say why 2 is not 0");
+
+// 8. A DWG needs a converter, so it cannot be judged either. The header is real
+//    and the size passes; what is missing is the ability to read it.
+const dwgDir = path.join(root, "dwg");
+fs.mkdirSync(dwgDir);
+fs.writeFileSync(
+  path.join(dwgDir, "blank.dwg"),
+  Buffer.concat([Buffer.from("AC1032", "ascii"), Buffer.alloc(4000, 0)]),
+);
+const dwgRun = deliver(dwgDir, ["--require", "drawing"]);
+assert.equal(dwgRun.code, 2, `an unreadable DWG must exit 2, not pass:\n${dwgRun.stdout}`);
+assert.equal(dwgRun.report.verdict, "unknown");
+assert.ok(
+  dwgRun.report.blocked.some((item) => item.id === "drawing.entities"),
+  "drawing.entities is the check that could not run",
+);
+
+// 9. A report that states a verdict but carries no self-review evidence is a
+//    claim, not a result. One line saying "pass" used to be enough.
+const hollow = path.join(root, "hollow");
+fs.mkdirSync(hollow);
+stepFile(path.join(hollow, "part.step"), "AUTOMOTIVE_DESIGN", 300);
+fs.writeFileSync(
+  path.join(hollow, "part_review_report.json"),
+  JSON.stringify({ evaluation: { status: "pass", issues: [] } }),
+  "utf8",
+);
+const hollowRun = deliver(hollow);
+assert.equal(hollowRun.code, 1, `a bare status must not pass:\n${hollowRun.stdout}`);
+const hollowIds = hollowRun.report.files.flatMap((f) => f.checks.filter((c) => !c.ok).map((c) => c.id));
+assert.ok(hollowIds.includes("review.checks"), `expected review.checks in ${hollowIds}`);
+
+// 10. The report says previews were created, but the folder next to it holds no
+//     image. That is the shape of a report written without looking.
+const noPix = path.join(root, "nopix");
+fs.mkdirSync(noPix);
+stepFile(path.join(noPix, "part.step"), "AUTOMOTIVE_DESIGN", 300);
+fs.writeFileSync(
+  path.join(noPix, "part_review_report.json"),
+  JSON.stringify({
+    evaluation: { status: "pass", issues: [] },
+    checks: { previews_created: true, previews_not_blank: true, expected_outputs_exist: true },
+  }),
+  "utf8",
+);
+const noPixRun = deliver(noPix);
+assert.equal(noPixRun.code, 1, `previews claimed but absent must fail:\n${noPixRun.stdout}`);
+const noPixIds = noPixRun.report.files.flatMap((f) => f.checks.filter((c) => !c.ok).map((c) => c.id));
+assert.ok(
+  noPixIds.includes("review.previews_on_disk"),
+  `expected review.previews_on_disk in ${noPixIds}`,
+);
+
+// 11. Upstream marks every report as needing a human. That is a warning, not a
+//     failure: it is a limit of the reviewer, not a defect in the delivery.
+fs.writeFileSync(
+  path.join(good, "part_review_report.json"),
+  JSON.stringify({
+    evaluation: { status: "pass", issues: [], score: 92 },
+    checks: { previews_created: true, previews_not_blank: true, expected_outputs_exist: true },
+    manual_review_required: true,
+  }),
+  "utf8",
+);
+const manualRun = deliver(good, ["--require", "step"]);
+assert.equal(manualRun.code, 0, `a human-review flag must not fail the delivery:\n${manualRun.stdout}`);
+assert.ok(
+  manualRun.report.files
+    .flatMap((f) => f.checks)
+    .some((c) => c.id === "review.manual" && c.severity === "warning"),
+  "manual_review_required must surface as a warning",
+);
+
+// 12. A DWG gets the same treatment as a DXF when a converter can be driven.
+//     The converter here is a stub that writes a real DXF, so the path from
+//     "unreadable binary" to "fully checked drawing" is exercised end to end.
+const dwgReal = path.join(root, "dwgreal");
+fs.mkdirSync(dwgReal);
+fs.writeFileSync(
+  path.join(dwgReal, "sheet.dwg"),
+  Buffer.concat([Buffer.from("AC1032", "ascii"), Buffer.alloc(4000, 0)]),
+);
+const stubSource = path.join(root, "stub-source.dxf");
+const stubScript = path.join(root, "stub-converter.py");
+const stubBuilt = spawnSync(PY, ["-c", BUILD, root, "stub-source"], { encoding: "utf8" });
+if (stubBuilt.status === 0) {
+  fs.renameSync(path.join(root, "stub-source.dxf"), stubSource);
+}
+fs.writeFileSync(
+  stubScript,
+  [
+    "import shutil, sys",
+    `shutil.copy(r'${stubSource}', sys.argv[2])`,
+    "",
+  ].join("\n"),
+  "utf8",
+);
+fs.writeFileSync(
+  path.join(dwgReal, "sheet.dwg"),
+  Buffer.concat([Buffer.from("AC1032", "ascii"), Buffer.alloc(4000, 0)]),
+);
+const savedConverter = process.env.DSH_SW_CAD_DWG_CONVERTER;
+process.env.DSH_SW_CAD_DWG_CONVERTER = `"${PY}" "${stubScript}" {in} {out}`;
+const dwgRealOut = path.join(dwgReal, "delivery.json");
+const dwgRealRun = spawnSync(PY, [SCRIPT, dwgReal, "--out", dwgRealOut, "--require", "drawing"], {
+  encoding: "utf8",
+  env: process.env,
+});
+if (savedConverter === undefined) delete process.env.DSH_SW_CAD_DWG_CONVERTER;
+else process.env.DSH_SW_CAD_DWG_CONVERTER = savedConverter;
+if (fs.existsSync(stubSource)) {
+  const dwgReport = JSON.parse(fs.readFileSync(dwgRealOut, "utf8"));
+  const dwgIds = dwgReport.files.flatMap((f) => f.checks.map((c) => c.id));
+  assert.ok(dwgIds.includes("dwg.converted"), `expected dwg.converted in ${dwgIds}`);
+  assert.ok(
+    dwgIds.includes("drawing.sheets") || dwgIds.includes("drawing.entities"),
+    `the converted DWG must be checked like a DXF, got ${dwgIds}`,
+  );
+  assert.ok(
+    !dwgReport.blocked.some((b) => b.id === "drawing.entities"),
+    "a converted DWG must not be reported as unchecked",
+  );
+  console.log(`dwg converted   -> ${dwgReport.verdict}`);
+} else {
+  console.log("dwg converted   -> skipped (ezdxf not available to build the stub DXF)");
+}
+
 fs.rmSync(root, { recursive: true, force: true });
-console.log("deliver: 6 cases behave as intended");
+console.log("deliver: 12 cases behave as intended");
 
